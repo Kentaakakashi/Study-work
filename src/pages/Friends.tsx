@@ -9,7 +9,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  limit,
   onSnapshot,
   query,
   serverTimestamp,
@@ -21,13 +20,16 @@ type Profile = { displayName?: string; username?: string; pfp?: string; photoURL
 type Presence = { online?: boolean; status?: string; lastSeen?: any };
 
 function normUsername(s: string) {
-  return (s || "").toLowerCase().replace(/\s+/g, "").replace(/[^a-z0-9_\.]/g, "");
+  return (s || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/^@+/, "") // ✅ allow typing @kenta
+    .replace(/[^a-z0-9_\.]/g, "");
 }
 function requestId(fromUid: string, toUid: string) {
   return `${fromUid}_${toUid}`;
 }
 function dice(seed: string) {
-  // simple fallback avatar
   return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed || "user")}`;
 }
 
@@ -65,46 +67,46 @@ const Friends = () => {
         const uids: string[] = [];
         snap.forEach((d) => uids.push(d.id));
         setFriends(uids);
-        // hydrate
         uids.slice(0, 30).forEach((uid) => loadProfile(uid));
       })
     );
 
-    // incoming requests
+    // ✅ incoming requests (FIXED collection name)
     unsubs.push(
-      onSnapshot(query(collection(db, "friendRequests"), where("toUid", "==", user.uid)), (snap) => {
-        const reqs: { id: string; fromUid: string }[] = [];
-        snap.forEach((d) => reqs.push({ id: d.id, fromUid: (d.data() as any).fromUid }));
-        setIncoming(reqs);
-        reqs.forEach((r) => loadProfile(r.fromUid));
-      })
+      onSnapshot(
+        query(
+          collection(db, "friend_requests"),
+          where("toUid", "==", user.uid),
+          where("status", "==", "pending")
+        ),
+        (snap) => {
+          const reqs: { id: string; fromUid: string }[] = [];
+          snap.forEach((d) => reqs.push({ id: d.id, fromUid: (d.data() as any).fromUid }));
+          setIncoming(reqs);
+          reqs.forEach((r) => loadProfile(r.fromUid));
+        }
+      )
     );
 
-    // outgoing requests
+    // ✅ outgoing requests (FIXED collection name)
     unsubs.push(
-      onSnapshot(query(collection(db, "friendRequests"), where("fromUid", "==", user.uid)), (snap) => {
-        const reqs: { id: string; toUid: string }[] = [];
-        snap.forEach((d) => reqs.push({ id: d.id, toUid: (d.data() as any).toUid }));
-        setOutgoing(reqs);
-        reqs.forEach((r) => loadProfile(r.toUid));
-      })
+      onSnapshot(
+        query(
+          collection(db, "friend_requests"),
+          where("fromUid", "==", user.uid),
+          where("status", "==", "pending")
+        ),
+        (snap) => {
+          const reqs: { id: string; toUid: string }[] = [];
+          snap.forEach((d) => reqs.push({ id: d.id, toUid: (d.data() as any).toUid }));
+          setOutgoing(reqs);
+          reqs.forEach((r) => loadProfile(r.toUid));
+        }
+      )
     );
-
-    // presence heartbeat (optional but nice)
-    const ref = doc(db, "presence", user.uid);
-    const write = async (online: boolean, status: string = "online") => {
-      await setDoc(ref, { online, status, lastSeen: serverTimestamp() }, { merge: true });
-    };
-    write(true, "online").catch(() => {});
-    const timer = setInterval(() => write(true, document.hidden ? "idle" : "online").catch(() => {}), 25000);
-    const onVis = () => write(true, document.hidden ? "idle" : "online").catch(() => {});
-    document.addEventListener("visibilitychange", onVis);
 
     return () => {
       unsubs.forEach((u) => u());
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVis);
-      write(false, "idle").catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
@@ -112,7 +114,11 @@ const Friends = () => {
   // watch presence for visible cards
   useEffect(() => {
     const unsubs: (() => void)[] = [];
-    const all = new Set<string>([...friends, ...incoming.map((x) => x.fromUid), ...outgoing.map((x) => x.toUid)]);
+    const all = new Set<string>([
+      ...friends,
+      ...incoming.map((x) => x.fromUid),
+      ...outgoing.map((x) => x.toUid),
+    ]);
     all.forEach((uid) => {
       if (uid && uid !== user?.uid) unsubs.push(watchPresence(uid));
     });
@@ -130,26 +136,41 @@ const Friends = () => {
 
   const sendRequest = async () => {
     if (!user) return toast("Login required");
-    const target = await lookupUidByUsername(qname);
-    if (!target) return toast("No user found for that username");
-    if (target === user.uid) return toast("That's you 💀");
 
-    // already friends?
-    const fr = await getDoc(doc(db, "friends", user.uid, "list", target));
-    if (fr.exists()) return toast("Already friends");
+    try {
+      const target = await lookupUidByUsername(qname);
+      if (!target) return toast("No user found for that username");
+      if (target === user.uid) return toast("That's you 💀");
 
-    const rid = requestId(user.uid, target);
-    const existing = await getDoc(doc(db, "friendRequests", rid));
-    if (existing.exists()) return toast("Request already sent");
+      // already friends?
+      const fr = await getDoc(doc(db, "friends", user.uid, "list", target));
+      if (fr.exists()) return toast("Already friends");
 
-    await setDoc(doc(db, "friendRequests", rid), { fromUid: user.uid, toUid: target, createdAt: serverTimestamp() });
-    toast("Request sent ✅");
-    setQName("");
+      const rid = requestId(user.uid, target);
+
+      // ✅ FIXED: check correct collection
+      const existing = await getDoc(doc(db, "friend_requests", rid));
+      if (existing.exists()) return toast("Request already sent");
+
+      // ✅ FIXED: write correct collection + add status
+      await setDoc(doc(db, "friend_requests", rid), {
+        fromUid: user.uid,
+        toUid: target,
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+
+      toast("Request sent ✅");
+      setQName("");
+    } catch (e: any) {
+      console.error("sendRequest error:", e);
+      toast(e?.message || "Request failed");
+    }
   };
 
   const cancelRequest = async (rid: string) => {
     try {
-      await deleteDoc(doc(db, "friendRequests", rid));
+      await deleteDoc(doc(db, "friend_requests", rid)); // ✅ FIXED
       toast("Cancelled");
     } catch (e: any) {
       toast(e?.message || "Cancel failed");
@@ -162,7 +183,9 @@ const Friends = () => {
     try {
       await setDoc(doc(db, "friends", user.uid, "list", fromUid), { uid: fromUid, createdAt: serverTimestamp() });
       await setDoc(doc(db, "friends", fromUid, "list", user.uid), { uid: user.uid, createdAt: serverTimestamp() });
-      await deleteDoc(doc(db, "friendRequests", rid));
+
+      // ✅ delete request
+      await deleteDoc(doc(db, "friend_requests", rid));
       toast("Friend added ✅");
     } catch (e: any) {
       toast(e?.message || "Accept failed");
@@ -173,7 +196,7 @@ const Friends = () => {
     if (!user) return;
     const rid = requestId(fromUid, user.uid);
     try {
-      await deleteDoc(doc(db, "friendRequests", rid));
+      await deleteDoc(doc(db, "friend_requests", rid)); // ✅ FIXED
       toast("Declined");
     } catch (e: any) {
       toast(e?.message || "Decline failed");

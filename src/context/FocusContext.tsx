@@ -1,46 +1,75 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 
-type Mode = "pomodoro" | "stopwatch" | null;
+type FocusMode = "pomodoro" | "stopwatch" | null;
 
-interface FocusState {
-  mode: Mode;
-  timeLeft: number;
+type FocusCtx = {
+  mode: FocusMode;
   isRunning: boolean;
+  timeLeft: number; // seconds (pomodoro) OR elapsed seconds (stopwatch)
+  setMode: React.Dispatch<React.SetStateAction<FocusMode>>;
+  setTimeLeft: React.Dispatch<React.SetStateAction<number>>;
   startPomodoro: (minutes: number) => void;
   startStopwatch: () => void;
-  stop: () => void;
+  pause: () => void;
+  resume: () => void;
   reset: () => void;
-}
+};
 
-const FocusContext = createContext<FocusState | null>(null);
+const FocusContext = createContext<FocusCtx | null>(null);
 
 export function FocusProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<Mode>(null);
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [mode, setMode] = useState<FocusMode>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const tickRef = useRef<number | null>(null);
 
+  // restore state on load (so page switches/refresh don’t kill it)
   useEffect(() => {
-    if (!isRunning) return;
+    const raw = localStorage.getItem("focus_state_v1");
+    if (!raw) return;
+    try {
+      const s = JSON.parse(raw);
+      setMode(s.mode ?? null);
+      setIsRunning(!!s.isRunning);
+      setTimeLeft(Number.isFinite(s.timeLeft) ? s.timeLeft : 0);
+    } catch {
+      // ignore
+    }
+  }, []);
 
-    intervalRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (mode === "pomodoro" && prev <= 1) {
-          clearInterval(intervalRef.current!);
-          setIsRunning(false);
-          return 0;
-        }
-        return prev - 1;
+  // persist state
+  useEffect(() => {
+    localStorage.setItem(
+      "focus_state_v1",
+      JSON.stringify({ mode, isRunning, timeLeft })
+    );
+  }, [mode, isRunning, timeLeft]);
+
+  // ticking logic
+  useEffect(() => {
+    if (!isRunning || !mode) return;
+
+    // clear any previous
+    if (tickRef.current) window.clearInterval(tickRef.current);
+
+    tickRef.current = window.setInterval(() => {
+      setTimeLeft((prev) => {
+        if (mode === "stopwatch") return prev + 1;
+        // pomodoro countdown
+        return Math.max(prev - 1, 0);
       });
     }, 1000);
 
-    return () => clearInterval(intervalRef.current!);
+    return () => {
+      if (tickRef.current) window.clearInterval(tickRef.current);
+      tickRef.current = null;
+    };
   }, [isRunning, mode]);
 
   const startPomodoro = (minutes: number) => {
     setMode("pomodoro");
-    setTimeLeft(minutes * 60);
+    setTimeLeft(Math.max(1, minutes) * 60);
     setIsRunning(true);
   };
 
@@ -50,44 +79,40 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     setIsRunning(true);
   };
 
-  const stop = () => {
-    setIsRunning(false);
+  const pause = () => setIsRunning(false);
+  const resume = () => {
+    if (mode) setIsRunning(true);
   };
 
   const reset = () => {
     setIsRunning(false);
-    setTimeLeft(0);
     setMode(null);
+    setTimeLeft(0);
+    localStorage.removeItem("focus_state_v1");
   };
 
   return (
     <FocusContext.Provider
-      value={{ mode, timeLeft, isRunning, startPomodoro, startStopwatch, stop, reset }}
+      value={{
+        mode,
+        isRunning,
+        timeLeft,
+        setMode,
+        setTimeLeft,
+        startPomodoro,
+        startStopwatch,
+        pause,
+        resume,
+        reset,
+      }}
     >
       {children}
     </FocusContext.Provider>
   );
 }
 
-export const useFocus = () => {
+export function useFocus() {
   const ctx = useContext(FocusContext);
-  if (!ctx) throw new Error("useFocus must be used inside FocusProvider");
+  if (!ctx) throw new Error("useFocus must be used inside <FocusProvider>");
   return ctx;
-};
-
-useEffect(() => {
-  localStorage.setItem(
-    "focus-state",
-    JSON.stringify({ mode, timeLeft, isRunning })
-  );
-}, [mode, timeLeft, isRunning]);
-
-useEffect(() => {
-  const saved = localStorage.getItem("focus-state");
-  if (saved) {
-    const parsed = JSON.parse(saved);
-    setMode(parsed.mode);
-    setTimeLeft(parsed.timeLeft);
-    setIsRunning(parsed.isRunning);
-  }
-}, []);
+}

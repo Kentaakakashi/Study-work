@@ -21,10 +21,18 @@ const Pomodoro = () => {
   const [showCelebration, setShowCelebration] = useState(false);
 
   // when you FIRST open pomodoro, ensure timer has a value (but don’t override running sessions)
-  useEffect(() => {
-    if (mode !== "pomodoro" && !isRunning && timeLeft === 0) {
-      setTimeLeft(focusMins * 60);
-    }
+ useEffect(() => {
+  localStorage.setItem(
+    "pomodoro:meta",
+    JSON.stringify({
+      focusMins,
+      breakMins,
+      isBreak,
+      cycles,
+    })
+  );
+}, [focusMins, breakMins, isBreak, cycles]);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

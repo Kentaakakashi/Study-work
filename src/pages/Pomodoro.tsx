@@ -152,6 +152,22 @@ const Pomodoro = () => {
         </div>
       </motion.div>
 
+      const { timeLeft, stop, reset } = useFocus();
+
+const endSession = async () => {
+  stop();
+
+  const minutesStudied = Math.floor((totalDuration - timeLeft) / 60);
+
+  // save to Firestore
+  await updateDoc(doc(db, "stats", user.uid), {
+    totalMinutes: increment(minutesStudied)
+  });
+
+  reset();
+};
+
+
       {/* Settings */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card p-5 rounded-2xl">
         <div className="grid grid-cols-2 gap-4">

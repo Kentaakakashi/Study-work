@@ -117,7 +117,7 @@ const Landing = () => {
                   <span className="text-gradient">flow</span>
                 </h1>
                 <p className="text-lg text-muted-foreground max-w-xl">
-                  Timers, stats, community, friends, and an AI tutor — wrapped in a clean, animated UI.
+                  Timers, stats, community, friends, and an AI tutor. Wrapped in a single place.
                 </p>
               </div>
 

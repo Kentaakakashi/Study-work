@@ -5,6 +5,32 @@ import { useAuth } from "@/lib/auth";
 import { addStudyMinutes } from "@/lib/stats";
 import { toast } from "sonner";
 import { useFocus } from "@/context/FocusContext";
+import { NavLink } from "react-router-dom";
+
+<div className="flex gap-2 mb-4">
+  <NavLink
+    to="/focus/pomodoro"
+    className={({ isActive }) =>
+      `px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+        isActive ? "bg-primary/15 text-primary" : "bg-secondary/30 text-muted-foreground"
+      }`
+    }
+  >
+    Pomodoro
+  </NavLink>
+
+  <NavLink
+    to="/focus/stopwatch"
+    className={({ isActive }) =>
+      `px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+        isActive ? "bg-primary/15 text-primary" : "bg-secondary/30 text-muted-foreground"
+      }`
+    }
+  >
+    Stopwatch
+  </NavLink>
+</div>
+
 
 const subjects = ["Mathematics", "Physics", "Chemistry", "Computer Science", "Biology", "English", "History"];
 

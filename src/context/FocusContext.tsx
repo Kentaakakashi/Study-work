@@ -74,3 +74,20 @@ export const useFocus = () => {
   if (!ctx) throw new Error("useFocus must be used inside FocusProvider");
   return ctx;
 };
+
+useEffect(() => {
+  localStorage.setItem(
+    "focus-state",
+    JSON.stringify({ mode, timeLeft, isRunning })
+  );
+}, [mode, timeLeft, isRunning]);
+
+useEffect(() => {
+  const saved = localStorage.getItem("focus-state");
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    setMode(parsed.mode);
+    setTimeLeft(parsed.timeLeft);
+    setIsRunning(parsed.isRunning);
+  }
+}, []);

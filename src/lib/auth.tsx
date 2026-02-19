@@ -9,29 +9,12 @@ import {
   signOut,
   getIdToken,
 } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
-
-type ProfileDoc = {
-  uid: string;
-  email: string;
-  displayName: string;
-  photoURL: string;
-  username?: string;              // <-- important
-  onboardingComplete?: boolean;   // <-- important
-  createdAt?: any;
-  updatedAt?: any;
-};
 
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
-
-  // ✅ NEW
-  profile: ProfileDoc | null;
-  profileLoading: boolean;
-  needsOnboarding: boolean;
-
   idToken: string | null;
   signUpEmail: (email: string, password: string) => Promise<void>;
   signInEmail: (email: string, password: string) => Promise<void>;
@@ -41,44 +24,61 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function upsertProfile(u: User) {
-  const ref = doc(db, "profiles", u.uid);
-  const snap = await getDoc(ref);
+// Mirror identity info into both profiles + stats so leaderboard can show real names.
+async function upsertProfileAndStats(u: User) {
+  const profileRef = doc(db, "profiles", u.uid);
+  const statsRef = doc(db, "stats", u.uid);
 
-  // Only set createdAt when doc doesn't exist
-  const base: Partial<ProfileDoc> = {
-    uid: u.uid,
-    email: u.email || "",
-    displayName: u.displayName || "User",
-    photoURL: u.photoURL || "",
-    updatedAt: serverTimestamp(),
-  };
+  const displayName = u.displayName || "User";
+  const photoURL = u.photoURL || "";
 
-  if (!snap.exists()) {
-    await setDoc(
-      ref,
-      {
-        ...base,
-        createdAt: serverTimestamp(),
-        onboardingComplete: false, // <-- default for new user
-      },
-      { merge: true }
-    );
-  } else {
-    // Existing user: DO NOT wipe username/onboardingComplete
-    await setDoc(ref, base, { merge: true });
-  }
-}
+  // profiles/{uid}
+  await setDoc(
+    profileRef,
+    {
+      uid: u.uid,
+      email: u.email || "",
+      displayName,
+      photoURL,
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 
-async function fetchProfile(uid: string) {
-  const snap = await getDoc(doc(db, "profiles", uid));
-  return snap.exists() ? (snap.data() as ProfileDoc) : null;
+  // stats/{uid} (leaderboard reads this, so it needs displayName/photoURL/username)
+  // username is typically set later by your username-claim flow -> keep null until then
+  await setDoc(
+    statsRef,
+    {
+      uid: u.uid,
+      displayName,
+      photoURL,
+      username: null,
+
+      // initialize counters if missing
+      xp: 0,
+      totalMinutes: 0,
+      todayMinutes: 0,
+      weeklyMinutes: 0,
+      streak: 0,
+      lastStudyDay: null,
+
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 }
 
 async function setPresence(uid: string, online: boolean, status: string = "online") {
   await setDoc(
     doc(db, "presence", uid),
-    { online, status, lastSeen: serverTimestamp() },
+    {
+      online,
+      status,
+      lastSeen: serverTimestamp(),
+    },
     { merge: true }
   );
 }
@@ -88,10 +88,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [idToken, setIdToken] = useState<string | null>(null);
 
-  // ✅ NEW
-  const [profile, setProfile] = useState<ProfileDoc | null>(null);
-  const [profileLoading, setProfileLoading] = useState(true);
-
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
@@ -99,34 +95,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!u) {
         setIdToken(null);
-        setProfile(null);
-        setProfileLoading(false);
         return;
       }
 
       try {
-        setProfileLoading(true);
+        // Ensure docs exist + leaderboard fields are available
+        await upsertProfileAndStats(u);
 
-        // Ensure profile exists but DO NOT overwrite username/onboarding
-        await upsertProfile(u);
-
-        // Fetch profile so the app knows if onboarding is done
-        const p = await fetchProfile(u.uid);
-        setProfile(p);
-
-        // token (don’t force refresh every time)
+        // Token (don’t force refresh every time)
         const tok = await getIdToken(u);
         setIdToken(tok);
 
+        // Online presence
         await setPresence(u.uid, true, document.hidden ? "idle" : "online");
       } catch {
-        // best effort
-      } finally {
-        setProfileLoading(false);
+        // ignore (don’t break UI if firestore fails)
       }
     });
 
-    const vis = async () => {
+    const onVis = async () => {
       const u = auth.currentUser;
       if (!u) return;
       try {
@@ -134,63 +121,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     };
 
-    document.addEventListener("visibilitychange", vis);
+    document.addEventListener("visibilitychange", onVis);
 
-    window.addEventListener("beforeunload", () => {
+    const onUnload = () => {
       const u = auth.currentUser;
       if (!u) return;
+      // best-effort (can't await)
       setPresence(u.uid, false, "idle").catch(() => {});
-    });
+    };
+
+    window.addEventListener("beforeunload", onUnload);
 
     return () => {
-      document.removeEventListener("visibilitychange", vis);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("beforeunload", onUnload);
       unsub();
     };
   }, []);
-
-  const needsOnboarding =
-    !!user &&
-    !profileLoading &&
-    (!profile?.onboardingComplete || !profile?.username);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       loading,
-      profile,
-      profileLoading,
-      needsOnboarding,
       idToken,
 
       signUpEmail: async (email, password) => {
         const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        await upsertProfile(cred.user);
-        setProfile(await fetchProfile(cred.user.uid));
+        await upsertProfileAndStats(cred.user);
         setIdToken(await getIdToken(cred.user));
+        await setPresence(cred.user.uid, true, "online").catch(() => {});
       },
 
       signInEmail: async (email, password) => {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-        await upsertProfile(cred.user);
-        setProfile(await fetchProfile(cred.user.uid));
+        await upsertProfileAndStats(cred.user);
         setIdToken(await getIdToken(cred.user));
+        await setPresence(cred.user.uid, true, "online").catch(() => {});
       },
 
       signInGoogle: async () => {
         const provider = new GoogleAuthProvider();
         const cred = await signInWithPopup(auth, provider);
-        await upsertProfile(cred.user);
-        setProfile(await fetchProfile(cred.user.uid));
+        await upsertProfileAndStats(cred.user);
         setIdToken(await getIdToken(cred.user));
+        await setPresence(cred.user.uid, true, "online").catch(() => {});
       },
 
       logout: async () => {
         const u = auth.currentUser;
         if (u) await setPresence(u.uid, false, "idle").catch(() => {});
         await signOut(auth);
+        setIdToken(null);
       },
     }),
-    [user, loading, profile, profileLoading, needsOnboarding, idToken]
+    [user, loading, idToken]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

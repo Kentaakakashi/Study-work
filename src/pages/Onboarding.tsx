@@ -56,17 +56,19 @@ const Onboarding = () => {
 
       await setDoc(uref, { uid: user.uid, updatedAt: serverTimestamp() }, { merge: true });
 
-      await setDoc(
-        doc(db, "profiles", user.uid),
-        {
-          username: uname,
-          displayName: displayName.trim(),
-          pfp: pfpUrl.trim(),
-          subjects: selectedSubjects,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+     await setDoc(
+  doc(db, "profiles", user.uid),
+  {
+    username: uname,
+    displayName: displayName.trim(),
+    pfp: pfpUrl.trim(),
+    subjects: selectedSubjects,
+    onboardingComplete: true, // ✅ ADD THIS
+    updatedAt: serverTimestamp(),
+  },
+  { merge: true }
+);
+
 
       toast("Profile saved ✅");
       navigate("/home", { replace: true });

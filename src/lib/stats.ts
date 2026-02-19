@@ -16,17 +16,17 @@ export type StatsDoc = {
   updatedAt?: any;
 };
 
-function ymd(d = new Date()) {
+export function ymd(d = new Date()) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function mondayOfWeek(date = new Date()) {
+export function mondayOfWeek(date = new Date()) {
   const d = new Date(date);
   const day = d.getDay(); // 0 Sun..6 Sat
-  const diff = (day === 0 ? -6 : 1) - day;
+  const diff = (day === 0 ? -6 : 1) - day; // move to Monday
   d.setDate(d.getDate() + diff);
   return ymd(d);
 }
@@ -61,7 +61,6 @@ export function minutesToXp(minutes: number) {
 }
 
 export function levelFromXp(xp: number) {
-  // simple scaling
   // lvl 1: 0-99, lvl 2: 100-249, lvl 3: 250-449 ...
   let lvl = 1;
   let need = 100;
@@ -99,7 +98,7 @@ export async function addStudyMinutes(uid: string, minutes: number) {
   } else if (diffDays === 1) {
     newStreak += 1;
   } else {
-    newStreak = 1; // reset streak
+    newStreak = 1;
   }
 
   const newXp = (current.xp || 0) + minutesToXp(minutes);
@@ -132,10 +131,13 @@ export async function addStudyMinutes(uid: string, minutes: number) {
 
   // notify on level up
   if ((current.level || 1) !== newLevel) {
-    await createNotification(uid, uid, "level", "Level up!", `You reached Level ${newLevel} 🎉`, { level: newLevel, xp: newXp });
+    await createNotification(uid, uid, "level", "Level up!", `You reached Level ${newLevel} 🎉`, {
+      level: newLevel,
+      xp: newXp,
+    });
   }
 
-  // badge example milestones
+  // badge milestones
   const total = updates.totalMinutes || 0;
   if (total >= 60 && (current.totalMinutes || 0) < 60) {
     await createNotification(uid, uid, "badge", "Badge unlocked", "First hour focused 🏅", { badge: "first_hour" });

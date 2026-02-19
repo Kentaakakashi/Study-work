@@ -23,7 +23,7 @@ function normUsername(s: string) {
   return (s || "")
     .toLowerCase()
     .replace(/\s+/g, "")
-    .replace(/^@+/, "") // ✅ allow typing @kenta
+    .replace(/^@+/, "")
     .replace(/[^a-z0-9_\.]/g, "");
 }
 function requestId(fromUid: string, toUid: string) {
@@ -43,6 +43,7 @@ const Friends = () => {
   const [presence, setPresence] = useState<Record<string, Presence>>({});
 
   const loadProfile = async (uid: string) => {
+    if (!uid) return {};
     if (profiles[uid]) return profiles[uid];
     const snap = await getDoc(doc(db, "profiles", uid));
     const p = (snap.data() as Profile) || {};
@@ -61,7 +62,7 @@ const Friends = () => {
 
     const unsubs: (() => void)[] = [];
 
-    // friends list
+    // ✅ friends list: /friends/{uid}/list/{friendUid}
     unsubs.push(
       onSnapshot(collection(db, "friends", user.uid, "list"), (snap) => {
         const uids: string[] = [];
@@ -71,43 +72,33 @@ const Friends = () => {
       })
     );
 
-    // ✅ incoming requests (FIXED collection name)
+    // ✅ incoming requests: follows where to == me
     unsubs.push(
-      onSnapshot(
-        query(
-          collection(db, "friend_requests"),
-          where("toUid", "==", user.uid),
-          where("status", "==", "pending")
-        ),
-        (snap) => {
-          const reqs: { id: string; fromUid: string }[] = [];
-          snap.forEach((d) => reqs.push({ id: d.id, fromUid: (d.data() as any).fromUid }));
-          setIncoming(reqs);
-          reqs.forEach((r) => loadProfile(r.fromUid));
-        }
-      )
+      onSnapshot(query(collection(db, "follows"), where("to", "==", user.uid)), (snap) => {
+        const reqs: { id: string; fromUid: string }[] = [];
+        snap.forEach((d) => {
+          const data = d.data() as any;
+          reqs.push({ id: d.id, fromUid: String(data.from || "") });
+        });
+        setIncoming(reqs.filter((r) => r.fromUid));
+        reqs.forEach((r) => loadProfile(r.fromUid));
+      })
     );
 
-    // ✅ outgoing requests (FIXED collection name)
+    // ✅ outgoing requests: follows where from == me
     unsubs.push(
-      onSnapshot(
-        query(
-          collection(db, "friend_requests"),
-          where("fromUid", "==", user.uid),
-          where("status", "==", "pending")
-        ),
-        (snap) => {
-          const reqs: { id: string; toUid: string }[] = [];
-          snap.forEach((d) => reqs.push({ id: d.id, toUid: (d.data() as any).toUid }));
-          setOutgoing(reqs);
-          reqs.forEach((r) => loadProfile(r.toUid));
-        }
-      )
+      onSnapshot(query(collection(db, "follows"), where("from", "==", user.uid)), (snap) => {
+        const reqs: { id: string; toUid: string }[] = [];
+        snap.forEach((d) => {
+          const data = d.data() as any;
+          reqs.push({ id: d.id, toUid: String(data.to || "") });
+        });
+        setOutgoing(reqs.filter((r) => r.toUid));
+        reqs.forEach((r) => loadProfile(r.toUid));
+      })
     );
 
-    return () => {
-      unsubs.forEach((u) => u());
-    };
+    return () => unsubs.forEach((u) => u());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
 
@@ -148,15 +139,13 @@ const Friends = () => {
 
       const rid = requestId(user.uid, target);
 
-      // ✅ FIXED: check correct collection
-      const existing = await getDoc(doc(db, "friend_requests", rid));
+      // already requested?
+      const existing = await getDoc(doc(db, "follows", rid));
       if (existing.exists()) return toast("Request already sent");
 
-      // ✅ FIXED: write correct collection + add status
-      await setDoc(doc(db, "friend_requests", rid), {
-        fromUid: user.uid,
-        toUid: target,
-        status: "pending",
+      await setDoc(doc(db, "follows", rid), {
+        from: user.uid,
+        to: target,
         createdAt: serverTimestamp(),
       });
 
@@ -170,7 +159,7 @@ const Friends = () => {
 
   const cancelRequest = async (rid: string) => {
     try {
-      await deleteDoc(doc(db, "friend_requests", rid)); // ✅ FIXED
+      await deleteDoc(doc(db, "follows", rid));
       toast("Cancelled");
     } catch (e: any) {
       toast(e?.message || "Cancel failed");
@@ -181,11 +170,16 @@ const Friends = () => {
     if (!user) return;
     const rid = requestId(fromUid, user.uid);
     try {
-      await setDoc(doc(db, "friends", user.uid, "list", fromUid), { uid: fromUid, createdAt: serverTimestamp() });
-      await setDoc(doc(db, "friends", fromUid, "list", user.uid), { uid: user.uid, createdAt: serverTimestamp() });
+      await setDoc(doc(db, "friends", user.uid, "list", fromUid), {
+        uid: fromUid,
+        createdAt: serverTimestamp(),
+      });
+      await setDoc(doc(db, "friends", fromUid, "list", user.uid), {
+        uid: user.uid,
+        createdAt: serverTimestamp(),
+      });
 
-      // ✅ delete request
-      await deleteDoc(doc(db, "friend_requests", rid));
+      await deleteDoc(doc(db, "follows", rid));
       toast("Friend added ✅");
     } catch (e: any) {
       toast(e?.message || "Accept failed");
@@ -196,7 +190,7 @@ const Friends = () => {
     if (!user) return;
     const rid = requestId(fromUid, user.uid);
     try {
-      await deleteDoc(doc(db, "friend_requests", rid)); // ✅ FIXED
+      await deleteDoc(doc(db, "follows", rid));
       toast("Declined");
     } catch (e: any) {
       toast(e?.message || "Decline failed");
@@ -223,6 +217,7 @@ const Friends = () => {
     const status = !pres.online ? "offline" : pres.status || "online";
     const dot =
       !pres.online ? "bg-secondary/40" : pres.status === "studying" ? "bg-emerald-400/80" : "bg-primary/80";
+
     return (
       <div className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-secondary/15 border border-border/40">
         <div className="flex items-center gap-3 min-w-0">
@@ -289,10 +284,16 @@ const Friends = () => {
             outIncoming.map((r) =>
               card(r.fromUid, (
                 <>
-                  <button onClick={() => accept(r.fromUid)} className="px-3 py-2 rounded-xl bg-primary/20 border border-primary/30 text-sm">
+                  <button
+                    onClick={() => accept(r.fromUid)}
+                    className="px-3 py-2 rounded-xl bg-primary/20 border border-primary/30 text-sm"
+                  >
                     <MailCheck className="w-4 h-4 inline mr-1" /> Accept
                   </button>
-                  <button onClick={() => decline(r.fromUid)} className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm">
+                  <button
+                    onClick={() => decline(r.fromUid)}
+                    className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm"
+                  >
                     <MailX className="w-4 h-4 inline mr-1" /> Decline
                   </button>
                 </>
@@ -311,7 +312,10 @@ const Friends = () => {
           ) : (
             outOutgoing.map((r) =>
               card(r.toUid, (
-                <button onClick={() => cancelRequest(r.id)} className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm">
+                <button
+                  onClick={() => cancelRequest(r.id)}
+                  className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm"
+                >
                   <MailX className="w-4 h-4 inline mr-1" /> Cancel
                 </button>
               ))
@@ -329,7 +333,10 @@ const Friends = () => {
           ) : (
             outFriends.map((uid) =>
               card(uid, (
-                <button onClick={() => removeFriend(uid)} className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm">
+                <button
+                  onClick={() => removeFriend(uid)}
+                  className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm"
+                >
                   <Trash2 className="w-4 h-4 inline mr-1" /> Remove
                 </button>
               ))

@@ -253,7 +253,7 @@ const Friends = () => {
           </div>
           <button
             type="button"
-            onClick={() => toast("Live updates are on — no refresh needed 😌")}
+            onClick={() => toast("Live updates are on, no refresh needed 😌")}
             className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition"
           >
             <RefreshCw className="w-4 h-4 inline mr-1" /> Refresh
@@ -264,7 +264,7 @@ const Friends = () => {
           <input
             value={qname}
             onChange={(e) => setQName(e.target.value)}
-            placeholder="Search username (e.g. @kenta)"
+            placeholder="Search username (e.g. @kentakakashi)"
             className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
           <button onClick={sendRequest} className="glow-button px-5 py-3 rounded-xl font-semibold">

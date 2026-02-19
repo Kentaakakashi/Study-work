@@ -1,32 +1,246 @@
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Flame, Zap, Timer, Brain, Users, MessageSquare, Target, CheckCircle2, TrendingUp, BookOpen } from "lucide-react";
+import {
+  Flame,
+  Zap,
+  Timer,
+  Brain,
+  Users,
+  MessageSquare,
+  Target,
+  CheckCircle2,
+  TrendingUp,
+  BookOpen,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/lib/auth";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  getDoc,
+  increment,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
+import { ensureStats, ymd } from "@/lib/stats";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
-const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
+const fadeUp = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4 } },
+};
 
-const studyingNow = [
-  { name: "Alex", subject: "Physics", avatar: "A", status: "studying" as const },
-  { name: "Maya", subject: "Math", avatar: "M", status: "studying" as const },
-  { name: "Jordan", subject: "CS", avatar: "J", status: "online" as const },
-];
+type StatsDoc = {
+  streak?: number;
+  lastStudiedDate?: string;
+  today?: Record<string, number>;
+  missionClaims?: Record<string, Record<string, boolean>>;
+};
 
-const missions = [
-  { label: "Focus for 25 mins", progress: 15, goal: 25, xp: 50, done: false },
-  { label: "Reply to 1 doubt", progress: 1, goal: 1, xp: 30, done: true },
-  { label: "Plan tomorrow", progress: 0, goal: 1, xp: 20, done: false },
-  { label: "Study 60 mins total", progress: 42, goal: 60, xp: 100, done: false },
-];
+type Profile = {
+  displayName?: string;
+  username?: string;
+  pfp?: string;
+  photoURL?: string;
+  hideOnline?: boolean;
+  hideStats?: boolean;
+  xp?: number;
+  dailyGoal?: number;
+};
+
+type Presence = { online?: boolean; status?: string; lastSeen?: any };
+
+function addDays(d: Date, n: number) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+function dice(seed: string) {
+  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed || "user")}`;
+}
+
+function levelFromXp(xp: number) {
+  const safe = Math.max(0, Math.floor(xp || 0));
+  const level = Math.floor(safe / 250) + 1;
+  const nextLevelXp = level * 250;
+  const intoLevel = safe - (level - 1) * 250;
+  const xpProgress = (intoLevel / 250) * 100;
+  return { level, nextLevelXp, xpProgress };
+}
 
 const Home = () => {
   const navigate = useNavigate();
-  const focusMinutes = 42;
-  const focusGoal = 120;
-  const progressPercent = (focusMinutes / focusGoal) * 100;
-  const xp = 1250;
-  const level = 5;
-  const nextLevelXp = level * 250;
-  const xpProgress = (xp % nextLevelXp) / nextLevelXp * 100;
+  const { user, profile } = useAuth();
+
+  const [stats, setStats] = useState<StatsDoc | null>(null);
+  const [myProfile, setMyProfile] = useState<Profile | null>(null);
+
+  const [friendUids, setFriendUids] = useState<string[]>([]);
+  const [friendProfiles, setFriendProfiles] = useState<Record<string, Profile>>({});
+  const [presence, setPresence] = useState<Record<string, Presence>>({});
+
+  // Load my profile (for xp/goal) + stats live
+  useEffect(() => {
+    if (!user) return;
+    let unsubStats = () => {};
+    let unsubProfile = () => {};
+
+    (async () => {
+      await ensureStats(user.uid);
+
+      unsubStats = onSnapshot(doc(db, "stats", user.uid), (snap) => {
+        setStats((snap.data() as StatsDoc) || {});
+      });
+
+      unsubProfile = onSnapshot(doc(db, "profiles", user.uid), (snap) => {
+        setMyProfile((snap.data() as Profile) || {});
+      });
+    })();
+
+    return () => {
+      unsubStats();
+      unsubProfile();
+    };
+  }, [user]);
+
+  // Friends list live
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(collection(db, "friends", user.uid, "list"), (snap) => {
+      const uids: string[] = [];
+      snap.forEach((d) => uids.push(d.id));
+      setFriendUids(uids);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // Load friend profiles + presence watchers
+  useEffect(() => {
+    if (!user) return;
+    const unsubs: (() => void)[] = [];
+
+    const loadProfile = async (uid: string) => {
+      if (friendProfiles[uid]) return;
+      const s = await getDoc(doc(db, "profiles", uid));
+      setFriendProfiles((prev) => ({ ...prev, [uid]: ((s.data() as Profile) || {}) }));
+    };
+
+    friendUids.slice(0, 20).forEach((uid) => {
+      loadProfile(uid).catch(() => {});
+      const u = onSnapshot(doc(db, "presence", uid), (snap) => {
+        setPresence((prev) => ({ ...prev, [uid]: (snap.data() as Presence) || {} }));
+      });
+      unsubs.push(u);
+    });
+
+    return () => unsubs.forEach((u) => u());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [friendUids.join(",")]);
+
+  const todayKey = ymd();
+  const todayMins = stats?.today?.[todayKey] || 0;
+  const streak = stats?.streak || 0;
+
+  const focusGoal = myProfile?.dailyGoal || 120;
+  const progressPercent = Math.min(100, (todayMins / focusGoal) * 100);
+
+  const xp = myProfile?.xp || 0;
+  const { level, nextLevelXp, xpProgress } = levelFromXp(xp);
+
+  // “Plan tomorrow” mission uses planner localStorage (since Planner is local)
+  const plannedTomorrow = useMemo(() => {
+    const key = user ? `tasks:${user.uid}` : "tasks:guest";
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return false;
+      const tasks = JSON.parse(raw) as any[];
+      const tmr = ymd(addDays(new Date(), 1));
+      return tasks.some((t) => String(t?.due || "") === tmr);
+    } catch {
+      return false;
+    }
+  }, [user, todayKey]);
+
+  const claimsToday = stats?.missionClaims?.[todayKey] || {};
+  const isClaimed = (id: string) => !!claimsToday[id];
+
+  const missions = useMemo(() => {
+    return [
+      {
+        id: "focus25",
+        label: "Focus for 25 mins",
+        done: todayMins >= 25,
+        progress: Math.min(todayMins, 25),
+        goal: 25,
+        xp: 50,
+      },
+      {
+        id: "study60",
+        label: "Study 60 mins total",
+        done: todayMins >= 60,
+        progress: Math.min(todayMins, 60),
+        goal: 60,
+        xp: 100,
+      },
+      {
+        id: "planTomorrow",
+        label: "Plan tomorrow (add a task with tomorrow due date)",
+        done: plannedTomorrow,
+        progress: plannedTomorrow ? 1 : 0,
+        goal: 1,
+        xp: 35,
+      },
+    ];
+  }, [todayMins, plannedTomorrow]);
+
+  const claimMission = async (missionId: string, xpGain: number) => {
+    if (!user) return;
+
+    // Already claimed? No-op.
+    if (isClaimed(missionId)) return;
+
+    // Mark claim on stats doc
+    await setDoc(
+      doc(db, "stats", user.uid),
+      {
+        missionClaims: {
+          [todayKey]: {
+            [missionId]: true,
+          },
+        },
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    // Add XP to profile
+    await setDoc(
+      doc(db, "profiles", user.uid),
+      {
+        xp: increment(xpGain),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  };
+
+  const studyingNow = useMemo(() => {
+    const out: { uid: string; name: string; subject: string; avatar: string; status: "online" | "studying" }[] = [];
+    friendUids.slice(0, 20).forEach((uid) => {
+      const pres = presence[uid] || {};
+      if (!pres.online) return;
+      const p = friendProfiles[uid] || {};
+      const name = p.displayName || "User";
+      const avatar = (p.username || name || "U").slice(0, 1).toUpperCase();
+      const status = pres.status === "studying" ? "studying" : "online";
+      const subject = "Studying"; // optional: if you later store currentSubject in presence
+      out.push({ uid, name, subject, avatar, status });
+    });
+    return out.slice(0, 6);
+  }, [friendUids, presence, friendProfiles]);
 
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="max-w-6xl mx-auto space-y-6">
@@ -37,19 +251,26 @@ const Home = () => {
           <div className="relative w-32 h-32 mb-4">
             <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
               <circle cx="50" cy="50" r="42" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
-              <circle cx="50" cy="50" r="42" fill="none" stroke="hsl(var(--primary))" strokeWidth="8"
-                strokeLinecap="round" strokeDasharray={`${progressPercent * 2.64} 264`}
+              <circle
+                cx="50"
+                cy="50"
+                r="42"
+                fill="none"
+                stroke="hsl(var(--primary))"
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={`${progressPercent * 2.64} 264`}
                 className="transition-all duration-1000 ease-out"
                 style={{ filter: "drop-shadow(0 0 6px hsl(var(--primary) / 0.5))" }}
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-3xl font-bold">{focusMinutes}</span>
+              <span className="text-3xl font-bold">{todayMins}</span>
               <span className="text-xs text-muted-foreground">/ {focusGoal} min</span>
             </div>
           </div>
           <p className="text-sm font-medium">Today's Focus</p>
-          <p className="text-xs text-muted-foreground">Keep going! 🔥</p>
+          <p className="text-xs text-muted-foreground">Real minutes from Pomodoro + Stopwatch ✅</p>
         </motion.div>
 
         {/* Streak & Level */}
@@ -59,7 +280,7 @@ const Home = () => {
               <Flame className="w-7 h-7 streak-glow" />
             </div>
             <div>
-              <p className="text-3xl font-bold streak-glow">7</p>
+              <p className="text-3xl font-bold streak-glow">{streak}</p>
               <p className="text-sm text-muted-foreground">Day Streak</p>
             </div>
           </div>
@@ -107,62 +328,111 @@ const Home = () => {
           <div className="flex items-center gap-2 mb-5">
             <Target className="w-5 h-5 text-primary" />
             <h3 className="font-semibold">Daily Missions</h3>
+            <span className="ml-auto text-xs text-muted-foreground">{todayKey}</span>
           </div>
+
           <div className="space-y-3">
-            {missions.map((m) => (
-              <div key={m.label} className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${m.done ? "bg-success/5 border border-success/20" : "bg-secondary/20"}`}>
-                <CheckCircle2 className={`w-5 h-5 flex-shrink-0 ${m.done ? "text-success" : "text-muted-foreground/30"}`} />
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium ${m.done ? "line-through text-muted-foreground" : ""}`}>{m.label}</p>
-                  {!m.done && (
-                    <div className="xp-bar mt-1.5 h-1">
-                      <div className="xp-bar-fill h-1" style={{ width: `${(m.progress / m.goal) * 100}%` }} />
-                    </div>
+            {missions.map((m) => {
+              const claimed = isClaimed(m.id);
+              return (
+                <div
+                  key={m.id}
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                    claimed ? "bg-success/5 border border-success/20" : "bg-secondary/20"
+                  }`}
+                >
+                  <CheckCircle2
+                    className={`w-5 h-5 flex-shrink-0 ${
+                      m.done ? "text-success" : "text-muted-foreground/30"
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${claimed ? "line-through text-muted-foreground" : ""}`}>
+                      {m.label}
+                    </p>
+
+                    {!m.done && (
+                      <div className="xp-bar mt-1.5 h-1">
+                        <div className="xp-bar-fill h-1" style={{ width: `${(m.progress / m.goal) * 100}%` }} />
+                      </div>
+                    )}
+                  </div>
+
+                  <span className="text-xs font-mono text-primary">+{m.xp} XP</span>
+
+                  {m.done && !claimed && (
+                    <button
+                      onClick={() => claimMission(m.id, m.xp)}
+                      className="text-xs px-3 py-1 rounded-full bg-success/10 text-success font-medium hover:bg-success/20 transition-colors"
+                    >
+                      Claim
+                    </button>
+                  )}
+
+                  {claimed && (
+                    <span className="text-xs px-3 py-1 rounded-full bg-success/10 text-success font-medium">
+                      Claimed
+                    </span>
                   )}
                 </div>
-                <span className="text-xs font-mono text-primary">+{m.xp} XP</span>
-                {m.done && (
-                  <button className="text-xs px-3 py-1 rounded-full bg-success/10 text-success font-medium hover:bg-success/20 transition-colors">
-                    Claim
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </motion.div>
 
-        {/* Studying Now */}
+        {/* Studying Now (real friends presence) */}
         <motion.div variants={fadeUp} className="glass-card-hover p-6 rounded-2xl">
           <div className="flex items-center gap-2 mb-5">
             <Users className="w-5 h-5 text-primary" />
             <h3 className="font-semibold">Studying Now</h3>
             <span className="ml-auto text-xs text-muted-foreground">{studyingNow.length} online</span>
           </div>
+
           <div className="space-y-3">
-            {studyingNow.map((u) => (
-              <div key={u.name} className="flex items-center gap-3 p-3 rounded-xl bg-secondary/20 hover:bg-secondary/30 transition-colors">
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-sm font-bold text-primary-foreground">
-                    {u.avatar}
+            {studyingNow.map((u) => {
+              const fp = friendProfiles[u.uid] || {};
+              const pfp = fp.pfp || fp.photoURL || dice(fp.username || u.name);
+              return (
+                <div
+                  key={u.uid}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-secondary/20 hover:bg-secondary/30 transition-colors"
+                >
+                  <div className="relative">
+                    <img src={pfp} className="w-10 h-10 rounded-full object-cover" />
+                    <div
+                      className={`absolute -bottom-0.5 -right-0.5 ${
+                        u.status === "studying" ? "presence-studying" : "presence-online"
+                      }`}
+                    />
                   </div>
-                  <div className={`absolute -bottom-0.5 -right-0.5 ${u.status === "studying" ? "presence-studying" : "presence-online"}`} />
+
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{u.name}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <BookOpen className="w-3 h-3" /> {u.subject}
+                    </p>
+                  </div>
+
+                  {u.status === "studying" && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">
+                      Studying
+                    </span>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{u.name}</p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <BookOpen className="w-3 h-3" /> {u.subject}
-                  </p>
-                </div>
-                {u.status === "studying" && (
-                  <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">Studying</span>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
+
           {studyingNow.length === 0 && (
             <div className="text-center py-8">
               <Users className="w-10 h-10 mx-auto text-muted-foreground/30 mb-2" />
-              <p className="text-sm text-muted-foreground">No one studying right now</p>
+              <p className="text-sm text-muted-foreground">No friends online right now</p>
+              <button
+                onClick={() => navigate("/friends")}
+                className="mt-3 px-4 py-2 rounded-xl bg-secondary/25 hover:bg-secondary/35 transition border border-border/40 text-sm font-semibold"
+              >
+                Add friends
+              </button>
             </div>
           )}
         </motion.div>

@@ -5,6 +5,7 @@ export type NotificationType = "badge" | "level" | "friend" | "system";
 
 export async function createNotification(
   toUid: string,
+  fromUid: string,
   type: NotificationType,
   title: string,
   body: string,
@@ -14,6 +15,7 @@ export async function createNotification(
 
   await addDoc(collection(db, "notifications"), {
     toUid,
+    fromUid,
     type,
     title,
     body,

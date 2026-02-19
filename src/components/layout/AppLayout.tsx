@@ -1,10 +1,10 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { useLocation } from "react-router-dom";
 import AppSidebar from "./AppSidebar";
 import Topbar from "./Topbar";
 import MobileNav from "./MobileNav";
 import BackgroundBlobs from "./BackgroundBlobs";
+import FocusEngine from "@/components/focus/FocusEngine";
 
 const AppLayout = () => {
   const location = useLocation();
@@ -13,6 +13,9 @@ const AppLayout = () => {
     <div className="min-h-screen flex w-full relative">
       <BackgroundBlobs />
       <AppSidebar />
+
+      {/* ✅ Keeps pomodoro saving even if you leave the page */}
+      <FocusEngine />
 
       <div className="flex-1 flex flex-col min-h-screen">
         <Topbar />

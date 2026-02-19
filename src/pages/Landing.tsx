@@ -39,7 +39,7 @@ const Landing = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (!email || !password) return toast("Enter email + password");
+      if (!email || !password) return toast("Enter email + password.");
       if (isLogin) {
         await signInEmail(email, password);
       } else {

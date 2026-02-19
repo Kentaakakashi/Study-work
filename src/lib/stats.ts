@@ -1,127 +1,146 @@
-import {
-  arrayUnion,
-  doc,
-  getDoc,
-  increment,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
+import { doc, getDoc, increment, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { computeNewBadges } from "@/lib/badges";
 import { createNotification } from "@/lib/notifications";
 
-export function ymd(d = new Date()) {
-  const z = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+export type StatsDoc = {
+  uid: string;
+  xp: number;
+  level: number;
+  totalMinutes: number;
+  todayMinutes: number;
+  last7Days: Record<string, number>; // YYYY-MM-DD -> minutes
+  streak: number;
+  lastActiveDay: string; // YYYY-MM-DD
+  weeklyMinutes: number;
+  weekStart: string; // YYYY-MM-DD (Monday)
+  updatedAt?: any;
+};
+
+function ymd(d = new Date()) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
-export function levelFromXp(xp: number) {
-  // Simple curve: every level costs a bit more than last
-  // Level 1 starts at 0 xp
-  let level = 1;
-  let need = 120;
-  let left = Math.max(0, Math.floor(xp || 0));
-
-  while (left >= need) {
-    left -= need;
-    level += 1;
-    need = Math.floor(need * 1.12 + 25);
-    if (level > 99) break;
-  }
-  return level;
+function mondayOfWeek(date = new Date()) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0 Sun..6 Sat
+  const diff = (day === 0 ? -6 : 1) - day;
+  d.setDate(d.getDate() + diff);
+  return ymd(d);
 }
 
 export async function ensureStats(uid: string) {
-  const todayKey = ymd();
   const ref = doc(db, "stats", uid);
   const snap = await getDoc(ref);
+  if (snap.exists()) return snap.data() as StatsDoc;
 
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      uid,
-      today: { [todayKey]: 0 },
-      streak: 0,
-      lastStudiedDate: "",
-      totalMinutes: 0,
-      xp: 0,
-      level: 1,
-      badges: [],
-      updatedAt: serverTimestamp(),
-      createdAt: serverTimestamp(),
-    });
+  const today = ymd();
+  const weekStart = mondayOfWeek();
+
+  const init: StatsDoc = {
+    uid,
+    xp: 0,
+    level: 1,
+    totalMinutes: 0,
+    todayMinutes: 0,
+    last7Days: {},
+    streak: 0,
+    lastActiveDay: today,
+    weeklyMinutes: 0,
+    weekStart,
+  };
+
+  await setDoc(ref, { ...init, updatedAt: serverTimestamp() }, { merge: true });
+  return init;
+}
+
+export function minutesToXp(minutes: number) {
+  return Math.max(0, Math.round(minutes * 5)); // 1 min = 5 XP
+}
+
+export function levelFromXp(xp: number) {
+  // simple scaling
+  // lvl 1: 0-99, lvl 2: 100-249, lvl 3: 250-449 ...
+  let lvl = 1;
+  let need = 100;
+  let remaining = xp;
+
+  while (remaining >= need) {
+    remaining -= need;
+    lvl += 1;
+    need += 150;
   }
-
-  return ref;
+  return lvl;
 }
 
 export async function addStudyMinutes(uid: string, minutes: number) {
-  const mins = Math.max(1, Math.round(minutes));
-  const todayKey = ymd();
+  if (!uid || !minutes || minutes <= 0) return;
 
-  const ref = await ensureStats(uid);
+  const ref = doc(db, "stats", uid);
   const snap = await getDoc(ref);
-  const data = (snap.data() as any) || {};
+  const current = (snap.data() as StatsDoc) || (await ensureStats(uid));
 
-  // streak calc
-  let streak = data?.streak || 0;
-  const last = data?.lastStudiedDate || "";
+  const today = ymd();
+  const weekStart = mondayOfWeek();
 
-  if (!last) {
-    streak = 1;
-  } else if (last !== todayKey) {
-    const d0 = new Date(todayKey);
-    const d1 = new Date(last);
-    const diffDays = Math.round((d0.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays === 1) streak += 1;
-    else streak = 1;
+  const wasNewWeek = current.weekStart !== weekStart;
+  const lastActive = current.lastActiveDay || today;
+
+  // streak logic
+  const lastDate = new Date(lastActive);
+  const todayDate = new Date(today);
+  const diffDays = Math.floor((todayDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  let newStreak = current.streak || 0;
+  if (diffDays === 0) {
+    // same day - keep
+  } else if (diffDays === 1) {
+    newStreak += 1;
+  } else {
+    newStreak = 1; // reset streak
   }
 
-  const prevXp = Number(data?.xp || 0);
-  const prevLevel = Number(data?.level || 1);
+  const newXp = (current.xp || 0) + minutesToXp(minutes);
+  const newLevel = levelFromXp(newXp);
 
-  const xpGain = mins * 5; // 5 XP per min (feel free to change)
-  const nextXp = prevXp + xpGain;
-  const nextLevel = levelFromXp(nextXp);
+  // last7Days
+  const nextLast7 = { ...(current.last7Days || {}) };
+  nextLast7[today] = (nextLast7[today] || 0) + minutes;
 
-  // Write core stats
-  await setDoc(
-    ref,
-    {
-      today: { [todayKey]: increment(mins) },
-      totalMinutes: increment(mins),
-      xp: increment(xpGain),
-      streak,
-      lastStudiedDate: todayKey,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  // If level up, store computed level (so UI can just read it)
-  if (nextLevel !== prevLevel) {
-    await setDoc(ref, { level: nextLevel }, { merge: true });
-    await createNotification(uid, "level", `Level Up! ⚡`, `You reached level ${nextLevel}. Keep cooking.`, {
-      level: nextLevel,
-    }).catch(() => {});
+  // prune > 7 days
+  const keys = Object.keys(nextLast7).sort();
+  while (keys.length > 7) {
+    const k = keys.shift();
+    if (k) delete nextLast7[k];
   }
 
-  // Badge unlocks
-  const latest = (await getDoc(ref)).data() as any;
-  const newBadges = computeNewBadges({
-    totalMinutes: latest?.totalMinutes,
-    streak: latest?.streak,
-    level: latest?.level,
-    badges: latest?.badges,
-  });
+  const updates: Partial<StatsDoc> = {
+    lastActiveDay: today,
+    streak: newStreak,
+    todayMinutes: (current.todayMinutes || 0) + minutes,
+    totalMinutes: (current.totalMinutes || 0) + minutes,
+    last7Days: nextLast7,
+    weekStart,
+    weeklyMinutes: (wasNewWeek ? 0 : current.weeklyMinutes || 0) + minutes,
+    xp: newXp,
+    level: newLevel,
+  };
 
-  if (newBadges.length) {
-    await setDoc(ref, { badges: arrayUnion(...newBadges) }, { merge: true });
+  await setDoc(ref, { ...updates, updatedAt: serverTimestamp() }, { merge: true });
 
-    // one notification per badge (could bundle, but this feels hype)
-    for (const b of newBadges) {
-      await createNotification(uid, "badge", "Badge Unlocked 🏅", `Unlocked: ${b}`, { badge: b }).catch(() => {});
-    }
+  // notify on level up
+  if ((current.level || 1) !== newLevel) {
+    await createNotification(uid, uid, "level", "Level up!", `You reached Level ${newLevel} 🎉`, { level: newLevel, xp: newXp });
   }
 
-  return { mins, todayKey, streak, xpGain, nextXp, nextLevel };
+  // badge example milestones
+  const total = updates.totalMinutes || 0;
+  if (total >= 60 && (current.totalMinutes || 0) < 60) {
+    await createNotification(uid, uid, "badge", "Badge unlocked", "First hour focused 🏅", { badge: "first_hour" });
+  }
+  if (total >= 300 && (current.totalMinutes || 0) < 300) {
+    await createNotification(uid, uid, "badge", "Badge unlocked", "5 hours total focused 🏅", { badge: "five_hours" });
+  }
 }

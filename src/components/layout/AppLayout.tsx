@@ -1,24 +1,29 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 import AppSidebar from "./AppSidebar";
 import Topbar from "./Topbar";
 import MobileNav from "./MobileNav";
 import BackgroundBlobs from "./BackgroundBlobs";
-import FocusEngine from "@/components/focus/FocusEngine";
+import MobileSidebar from "./MobileSidebar";
 
 const AppLayout = () => {
   const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen flex w-full relative">
       <BackgroundBlobs />
       <AppSidebar />
 
-      {/* ✅ Keeps pomodoro saving even if you leave the page */}
-      <FocusEngine />
+      {/* ✅ Mobile drawer */}
+      <MobileSidebar
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+      />
 
       <div className="flex-1 flex flex-col min-h-screen">
-        <Topbar />
+        <Topbar onMenuToggle={() => setMobileMenuOpen((v) => !v)} />
 
         <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-x-hidden">
           <AnimatePresence mode="wait">
@@ -28,6 +33,7 @@ const AppLayout = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
+              onClick={() => setMobileMenuOpen(false)} // close menu if user taps content
             >
               <Outlet />
             </motion.div>

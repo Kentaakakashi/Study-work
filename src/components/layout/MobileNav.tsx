@@ -1,18 +1,20 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { Home, Timer, Users, BarChart3, Bot } from "lucide-react";
+import { Home, Timer, Users, BarChart3, Bell, Trophy } from "lucide-react";
 
 const navItems = [
   { title: "Home", path: "/home", icon: Home },
   { title: "Focus", path: "/focus/pomodoro", icon: Timer },
   { title: "Community", path: "/community", icon: Users },
   { title: "Stats", path: "/stats", icon: BarChart3 },
-  { title: "AI", path: "/ai", icon: Bot },
+  { title: "Board", path: "/leaderboard", icon: Trophy },
+  { title: "Notifs", path: "/notifications", icon: Bell },
 ];
 
 const MobileNav = () => {
   const location = useLocation();
   const isActive = (path: string) => {
     if (path === "/focus/pomodoro") return location.pathname.startsWith("/focus");
+    if (path === "/community") return location.pathname.startsWith("/community");
     return location.pathname === path;
   };
 
@@ -23,7 +25,7 @@ const MobileNav = () => {
           <NavLink
             key={item.path}
             to={item.path}
-            className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all duration-200 min-w-[56px]"
+            className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all duration-200 min-w-[56px]"
           >
             <div className="relative">
               <item.icon

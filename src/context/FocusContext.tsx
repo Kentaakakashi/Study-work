@@ -1,114 +1,198 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-type FocusMode = "pomodoro" | "stopwatch" | null;
+/**
+ * FocusContext v2:
+ * Pomodoro and Stopwatch are completely independent
+ * Both can run at the same time
+ * Uses timestamps so timers survive page switches/backgrounding
+ */
+
+type PomodoroState = {
+  running: boolean;
+  endAtMs: number | null;
+  timeLeftSec: number;
+};
+
+type StopwatchState = {
+  running: boolean;
+  startedAtMs: number | null;
+  elapsedSec: number;
+};
 
 type FocusCtx = {
-  mode: FocusMode;
-  isRunning: boolean;
-  timeLeft: number; // seconds (pomodoro) OR elapsed seconds (stopwatch)
-  setMode: React.Dispatch<React.SetStateAction<FocusMode>>;
-  setTimeLeft: React.Dispatch<React.SetStateAction<number>>;
+  // pomodoro
+  pomoRunning: boolean;
+  pomoTimeLeft: number;
   startPomodoro: (minutes: number) => void;
+  pausePomodoro: () => void;
+  resumePomodoro: () => void;
+  resetPomodoro: () => void;
+  setPomodoroTimeLeft: (seconds: number) => void;
+
+  // stopwatch
+  swRunning: boolean;
+  swElapsed: number;
   startStopwatch: () => void;
-  pause: () => void;
-  resume: () => void;
-  reset: () => void;
+  pauseStopwatch: () => void;
+  resetStopwatch: () => void;
 };
 
 const FocusContext = createContext<FocusCtx | null>(null);
 
+const STORAGE_KEY = "focus_state_v2";
+
+function clampInt(n: unknown, fallback = 0) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return fallback;
+  return Math.max(0, Math.floor(x));
+}
+
 export function FocusProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<FocusMode>(null);
-  const [isRunning, setIsRunning] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [pomo, setPomo] = useState<PomodoroState>({
+    running: false,
+    endAtMs: null,
+    timeLeftSec: 0,
+  });
+
+  const [sw, setSw] = useState<StopwatchState>({
+    running: false,
+    startedAtMs: null,
+    elapsedSec: 0,
+  });
 
   const tickRef = useRef<number | null>(null);
 
-  // restore state on load (so page switches/refresh don’t kill it)
   useEffect(() => {
-    const raw = localStorage.getItem("focus_state_v1");
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     try {
       const s = JSON.parse(raw);
-      setMode(s.mode ?? null);
-      setIsRunning(!!s.isRunning);
-      setTimeLeft(Number.isFinite(s.timeLeft) ? s.timeLeft : 0);
-    } catch {
-      // ignore
-    }
+      const pomoRaw = s?.pomo ?? {};
+      const swRaw = s?.sw ?? {};
+
+      setPomo({
+        running: !!pomoRaw.running,
+        endAtMs: typeof pomoRaw.endAtMs === "number" ? pomoRaw.endAtMs : null,
+        timeLeftSec: clampInt(pomoRaw.timeLeftSec, 0),
+      });
+
+      setSw({
+        running: !!swRaw.running,
+        startedAtMs: typeof swRaw.startedAtMs === "number" ? swRaw.startedAtMs : null,
+        elapsedSec: clampInt(swRaw.elapsedSec, 0),
+      });
+    } catch {}
   }, []);
 
-  // persist state
   useEffect(() => {
-    localStorage.setItem(
-      "focus_state_v1",
-      JSON.stringify({ mode, isRunning, timeLeft })
-    );
-  }, [mode, isRunning, timeLeft]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ pomo, sw }));
+  }, [pomo, sw]);
 
-  // ticking logic
   useEffect(() => {
-    if (!isRunning || !mode) return;
+    const anyRunning = pomo.running || sw.running;
+    if (!anyRunning) {
+      if (tickRef.current) window.clearInterval(tickRef.current);
+      tickRef.current = null;
+      return;
+    }
 
-    // clear any previous
     if (tickRef.current) window.clearInterval(tickRef.current);
 
     tickRef.current = window.setInterval(() => {
-      setTimeLeft((prev) => {
-        if (mode === "stopwatch") return prev + 1;
-        // pomodoro countdown
-        return Math.max(prev - 1, 0);
+      const now = Date.now();
+
+      setPomo((prev) => {
+        if (!prev.running || !prev.endAtMs) return prev;
+        const left = Math.max(0, Math.ceil((prev.endAtMs - now) / 1000));
+        if (left === 0) return { running: false, endAtMs: null, timeLeftSec: 0 };
+        if (left !== prev.timeLeftSec) return { ...prev, timeLeftSec: left };
+        return prev;
       });
-    }, 1000);
+
+      setSw((prev) => prev); // stopwatch UI uses derived memo
+    }, 500);
 
     return () => {
       if (tickRef.current) window.clearInterval(tickRef.current);
       tickRef.current = null;
     };
-  }, [isRunning, mode]);
+  }, [pomo.running, sw.running]);
+
+  const pomoTimeLeft = useMemo(() => {
+    if (!pomo.running) return pomo.timeLeftSec;
+    if (!pomo.endAtMs) return pomo.timeLeftSec;
+    return Math.max(0, Math.ceil((pomo.endAtMs - Date.now()) / 1000));
+  }, [pomo]);
+
+  const swElapsed = useMemo(() => {
+    if (!sw.running) return sw.elapsedSec;
+    if (!sw.startedAtMs) return sw.elapsedSec;
+    const extra = Math.max(0, Math.floor((Date.now() - sw.startedAtMs) / 1000));
+    return sw.elapsedSec + extra;
+  }, [sw]);
 
   const startPomodoro = (minutes: number) => {
-    setMode("pomodoro");
-    setTimeLeft(Math.max(1, minutes) * 60);
-    setIsRunning(true);
+    const total = Math.max(1, Math.floor(minutes)) * 60;
+    setPomo({ running: true, endAtMs: Date.now() + total * 1000, timeLeftSec: total });
+  };
+
+  const pausePomodoro = () => {
+    setPomo((prev) => {
+      if (!prev.running) return prev;
+      const left = Math.max(0, Math.ceil(((prev.endAtMs ?? Date.now()) - Date.now()) / 1000));
+      return { running: false, endAtMs: null, timeLeftSec: left };
+    });
+  };
+
+  const resumePomodoro = () => {
+    setPomo((prev) => {
+      if (prev.running) return prev;
+      const left = Math.max(0, prev.timeLeftSec);
+      if (left <= 0) return prev;
+      return { running: true, endAtMs: Date.now() + left * 1000, timeLeftSec: left };
+    });
+  };
+
+  const resetPomodoro = () => setPomo({ running: false, endAtMs: null, timeLeftSec: 0 });
+
+  const setPomodoroTimeLeft = (seconds: number) => {
+    const s = Math.max(0, Math.floor(seconds));
+    setPomo((prev) =>
+      prev.running ? { running: true, endAtMs: Date.now() + s * 1000, timeLeftSec: s } : { ...prev, timeLeftSec: s }
+    );
   };
 
   const startStopwatch = () => {
-    setMode("stopwatch");
-    setTimeLeft(0);
-    setIsRunning(true);
+    setSw((prev) => (prev.running ? prev : { ...prev, running: true, startedAtMs: Date.now() }));
   };
 
-  const pause = () => setIsRunning(false);
-  const resume = () => {
-    if (mode) setIsRunning(true);
+  const pauseStopwatch = () => {
+    setSw((prev) => {
+      if (!prev.running) return prev;
+      const extra = prev.startedAtMs ? Math.max(0, Math.floor((Date.now() - prev.startedAtMs) / 1000)) : 0;
+      return { running: false, startedAtMs: null, elapsedSec: prev.elapsedSec + extra };
+    });
   };
 
-  const reset = () => {
-    setIsRunning(false);
-    setMode(null);
-    setTimeLeft(0);
-    localStorage.removeItem("focus_state_v1");
+  const resetStopwatch = () => setSw({ running: false, startedAtMs: null, elapsedSec: 0 });
+
+  const value: FocusCtx = {
+    pomoRunning: pomo.running,
+    pomoTimeLeft,
+    startPomodoro,
+    pausePomodoro,
+    resumePomodoro,
+    resetPomodoro,
+    setPomodoroTimeLeft,
+
+    swRunning: sw.running,
+    swElapsed,
+    startStopwatch,
+    pauseStopwatch,
+    resetStopwatch,
   };
 
-  return (
-    <FocusContext.Provider
-      value={{
-        mode,
-        isRunning,
-        timeLeft,
-        setMode,
-        setTimeLeft,
-        startPomodoro,
-        startStopwatch,
-        pause,
-        resume,
-        reset,
-      }}
-    >
-      {children}
-    </FocusContext.Provider>
-  );
+  return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
 }
 
 export function useFocus() {

@@ -13,7 +13,7 @@ const Topbar = ({ onMenuToggle }: TopbarProps) => {
     <header className="sticky top-0 z-30 w-full glass-card border-b border-border/30 px-4 md:px-6 py-3">
       <div className="flex items-center justify-between">
         {/* Mobile menu */}
-        <button onClick={onMenuToggle} className="md:hidden p-2 rounded-lg hover:bg-secondary/50 transition-colors">
+        <button onClick={() => onMenuToggle?.()} className="md:hidden p-2 rounded-lg hover:bg-secondary/50 transition-colors">
           <Menu className="w-5 h-5 text-muted-foreground" />
         </button>
 

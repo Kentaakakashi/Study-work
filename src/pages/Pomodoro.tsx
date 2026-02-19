@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { addStudyMinutes } from "@/lib/stats";
 import { useFocus } from "@/context/FocusContext";
+import { NavLink } from "react-router-dom";
+
 
 const subjects = [
   "Mathematics",
@@ -161,6 +163,30 @@ export default function Pomodoro() {
           </div>
         </motion.div>
       )}
+
+      <div className="flex gap-2">
+  <NavLink
+    to="/focus/pomodoro"
+    className={({ isActive }) =>
+      `px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+        isActive ? "bg-primary/15 text-primary" : "bg-secondary/30 text-muted-foreground"
+      }`
+    }
+  >
+    Pomodoro
+  </NavLink>
+  <NavLink
+    to="/focus/stopwatch"
+    className={({ isActive }) =>
+      `px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+        isActive ? "bg-primary/15 text-primary" : "bg-secondary/30 text-muted-foreground"
+      }`
+    }
+  >
+    Stopwatch
+  </NavLink>
+</div>
+
 
       {/* Subject + Deep Work */}
       <motion.div

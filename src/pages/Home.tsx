@@ -147,7 +147,7 @@ const Home = () => {
   const focusGoal = myProfile?.dailyGoal || 120;
   const progressPercent = Math.min(100, (todayMins / focusGoal) * 100);
 
-  const xp = myProfile?.xp || 0;
+  const xp = stats?.xp || 0; 
   const { level, nextLevelXp, xpProgress } = levelFromXp(xp);
 
   // “Plan tomorrow” mission uses planner localStorage (since Planner is local)
@@ -197,25 +197,23 @@ const Home = () => {
   }, [todayMins, plannedTomorrow]);
 
   const claimMission = async (missionId: string, xpGain: number) => {
-    if (!user) return;
+  if (!user) return;
+  if (isClaimed(missionId)) return;
 
-    // Already claimed? No-op.
-    if (isClaimed(missionId)) return;
-
-    // Mark claim on stats doc
-    await setDoc(
-      doc(db, "stats", user.uid),
-      {
-        missionClaims: {
-          [todayKey]: {
-            [missionId]: true,
-          },
+  await setDoc(
+    doc(db, "stats", user.uid),
+    {
+      missionClaims: {
+        [todayKey]: {
+          [missionId]: true,
         },
-        updatedAt: serverTimestamp(),
       },
-      { merge: true }
-    );
-
+      xp: increment(xpGain),      // ← MOVED XP HERE
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
     // Add XP to profile
     await setDoc(
       doc(db, "profiles", user.uid),

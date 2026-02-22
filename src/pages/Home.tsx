@@ -208,22 +208,12 @@ const Home = () => {
           [missionId]: true,
         },
       },
-      xp: increment(xpGain),      // ← MOVED XP HERE
+      xp: increment(xpGain),  // ✅ XP now goes to stats
       updatedAt: serverTimestamp(),
     },
     { merge: true }
   );
 };
-    // Add XP to profile
-    await setDoc(
-      doc(db, "profiles", user.uid),
-      {
-        xp: increment(xpGain),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-  };
 
   const studyingNow = useMemo(() => {
     const out: { uid: string; name: string; subject: string; avatar: string; status: "online" | "studying" }[] = [];

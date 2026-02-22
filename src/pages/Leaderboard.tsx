@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useAuth } from "@/context/AuthContext";
-
+import { useAuth } from "@/lib/auth";
 type StatsDoc = {
   uid: string;
   displayName?: string;

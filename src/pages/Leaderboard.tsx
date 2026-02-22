@@ -3,7 +3,15 @@ import { motion } from "framer-motion";
 import { Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
-import { collection, doc, getDoc, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+} from "firebase/firestore";
 
 type StatRow = {
   uid: string;
@@ -11,9 +19,6 @@ type StatRow = {
   totalMinutes?: number;
   weeklyMinutes?: number;
   level?: number;
-  displayName?: string;
-  username?: string;
-  photoURL?: string;
 };
 
 type Profile = {
@@ -24,10 +29,12 @@ type Profile = {
 };
 
 function dice(seed: string) {
-  return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed || "user")}`;
+  return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+    seed || "user"
+  )}`;
 }
 
-function normUsername(s?: string) {
+function normUsername(s: string) {
   return (s || "")
     .toLowerCase()
     .replace(/\s+/g, "")
@@ -36,73 +43,75 @@ function normUsername(s?: string) {
 }
 
 /**
- * Enrich stats rows with profile data.
- * HARD RULE:
- *  - If profile doc does NOT exist -> skip that user (prevents "User" ghosts)
+ * Only allow "real" users into the board:
+ * - profile exists
+ * - profile.username exists
+ * - usernames/{usernameNorm}.uid === row.uid  (proves ownership)
  */
-async function enrichWithProfiles(rows: StatRow[]) {
-  const out: StatRow[] = [];
+async function enrichAndFilterRealUsers(rows: StatRow[]) {
+  const results: (StatRow & {
+    displayName?: string;
+    username?: string;
+    photoURL?: string;
+  })[] = [];
 
+  // Keep order stable
   await Promise.all(
-    rows.map(async (r) => {
+    rows.map(async (r, idx) => {
       try {
         const ps = await getDoc(doc(db, "profiles", r.uid));
-        if (!ps.exists()) return; // ✅ skip deleted/ghost users
+        if (!ps.exists()) return; // no profile => ghost => skip
 
         const p = (ps.data() as Profile) || {};
-        out.push({
+        const unameNorm = normUsername(p.username || "");
+        if (!unameNorm) return; // no username => skip
+
+        // Verify username claim points to this uid
+        const us = await getDoc(doc(db, "usernames", unameNorm));
+        if (!us.exists()) return;
+        const claimedUid = (us.data() as any)?.uid;
+        if (claimedUid !== r.uid) return;
+
+        results.push({
           ...r,
-          displayName: p.displayName || r.displayName,
-          username: p.username || r.username,
-          photoURL: p.pfp || p.photoURL || r.photoURL,
-        });
+          displayName: p.displayName,
+          username: unameNorm,
+          photoURL: p.pfp || p.photoURL,
+          // preserve original ordering via idx (we’ll sort back)
+          _idx: idx as any,
+        } as any);
       } catch {
-        // If profile read fails for any reason, skip (keeps leaderboard clean)
+        // If something errors, just skip that row (don’t poison UI)
         return;
       }
     })
   );
 
-  // keep original order as much as possible
-  out.sort((a, b) => rows.findIndex((x) => x.uid === a.uid) - rows.findIndex((x) => x.uid === b.uid));
-  return out.filter((r) => !!r.uid);
-}
+  // sort back to original snapshot order
+  results.sort((a: any, b: any) => (a._idx ?? 0) - (b._idx ?? 0));
 
-/**
- * Dedupe:
- * - If same username appears multiple times (old bug leftovers), keep ONLY best score.
- * - If username missing, fall back to uid (so those are unique).
- */
-function dedupe(rows: StatRow[], mode: "global" | "weekly") {
-  const best = new Map<string, StatRow>();
-
-  for (const r of rows) {
-    const key = normUsername(r.username) || `uid:${r.uid}`;
-    const prev = best.get(key);
-
-    const score = mode === "global" ? (r.xp || 0) : (r.weeklyMinutes || 0);
-    const prevScore = mode === "global" ? (prev?.xp || 0) : (prev?.weeklyMinutes || 0);
-
-    if (!prev || score > prevScore) best.set(key, r);
-  }
-
-  return Array.from(best.values());
+  // strip helper key
+  return results.map(({ _idx, ...rest }: any) => rest);
 }
 
 export default function Leaderboard() {
   const [tab, setTab] = useState<"global" | "weekly">("global");
-  const [rows, setRows] = useState<StatRow[]>([]);
+  const [rows, setRows] = useState<
+    (StatRow & { displayName?: string; username?: string; photoURL?: string })[]
+  >([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
 
-    // still reading from stats because that's where XP/minutes live,
-    // but we now ONLY show rows that have an existing profile.
     const q =
       tab === "global"
-        ? query(collection(db, "stats"), orderBy("xp", "desc"), limit(50))
-        : query(collection(db, "stats"), orderBy("weeklyMinutes", "desc"), limit(50));
+        ? query(collection(db, "stats"), orderBy("xp", "desc"), limit(25))
+        : query(
+            collection(db, "stats"),
+            orderBy("weeklyMinutes", "desc"),
+            limit(25)
+          );
 
     const unsub = onSnapshot(
       q,
@@ -110,19 +119,8 @@ export default function Leaderboard() {
         const raw: StatRow[] = [];
         snap.forEach((d) => raw.push({ uid: d.id, ...(d.data() as any) }));
 
-        const filled = await enrichWithProfiles(raw);
-
-        // ✅ Remove duplicates caused by old username/account bugs
-        const unique = dedupe(filled, tab);
-
-        // ✅ Re-sort after dedupe (because Map order can change)
-        unique.sort((a, b) => {
-          const as = tab === "global" ? (a.xp || 0) : (a.weeklyMinutes || 0);
-          const bs = tab === "global" ? (b.xp || 0) : (b.weeklyMinutes || 0);
-          return bs - as;
-        });
-
-        setRows(unique.slice(0, 25));
+        const cleaned = await enrichAndFilterRealUsers(raw);
+        setRows(cleaned);
         setLoading(false);
       },
       (err) => {
@@ -138,7 +136,11 @@ export default function Leaderboard() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-6 rounded-3xl"
+      >
         <div className="flex items-center gap-2">
           <Trophy className="w-5 h-5 text-primary" />
           <h3 className="text-lg font-bold">Leaderboard</h3>
@@ -148,7 +150,9 @@ export default function Leaderboard() {
           <button
             onClick={() => setTab("global")}
             className={`px-4 py-2 rounded-2xl border text-sm ${
-              tab === "global" ? "bg-primary/15 border-primary/30 text-primary" : "bg-secondary/10 border-border/40"
+              tab === "global"
+                ? "bg-primary/15 border-primary/30 text-primary"
+                : "bg-secondary/10 border-border/40"
             }`}
           >
             Global (XP)
@@ -156,7 +160,9 @@ export default function Leaderboard() {
           <button
             onClick={() => setTab("weekly")}
             className={`px-4 py-2 rounded-2xl border text-sm ${
-              tab === "weekly" ? "bg-primary/15 border-primary/30 text-primary" : "bg-secondary/10 border-border/40"
+              tab === "weekly"
+                ? "bg-primary/15 border-primary/30 text-primary"
+                : "bg-secondary/10 border-border/40"
             }`}
           >
             Weekly (Minutes)
@@ -164,20 +170,23 @@ export default function Leaderboard() {
         </div>
 
         <p className="text-xs text-muted-foreground mt-2">
-          Only real profiles show up. Deleted/ghost accounts won’t pollute the board anymore.
+          Only “real” accounts show up: must have a profile + a valid claimed
+          username. Ghost/deleted accounts won’t pollute the board.
         </p>
       </motion.div>
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : list.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No leaderboard data yet.</p>
+        <p className="text-sm text-muted-foreground">
+          No leaderboard data yet (or no valid claimed profiles).
+        </p>
       ) : (
         <div className="space-y-3">
           {list.map((r, i) => {
-            const name = r.displayName || (r.username ? `@${r.username}` : "User");
-            const sub = r.username ? `@${r.username}` : r.uid.slice(0, 8);
-            const pfp = r.photoURL || dice(r.username || r.displayName || r.uid);
+            const uname = r.username ? `@${r.username}` : "@unknown";
+            const name = r.displayName?.trim() ? r.displayName : uname; // never show "User" again
+            const pfp = r.photoURL || dice(r.username || r.uid);
 
             const xp = r.xp || 0;
             const minsTotal = r.totalMinutes || 0;
@@ -192,12 +201,18 @@ export default function Leaderboard() {
                 className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-secondary/10 border border-border/40"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-14 shrink-0 text-center font-bold text-primary">#{i + 1}</div>
-                  <img src={pfp} className="w-12 h-12 rounded-2xl object-cover" />
+                  <div className="w-14 shrink-0 text-center font-bold text-primary">
+                    #{i + 1}
+                  </div>
+                  <img
+                    src={pfp}
+                    className="w-12 h-12 rounded-2xl object-cover"
+                    alt="pfp"
+                  />
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{name}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      Lvl {lvl} • {xp} XP • {minsTotal} min total • {sub}
+                      Lvl {lvl} • {xp} XP • {minsTotal} min total • {uname}
                     </p>
                   </div>
                 </div>

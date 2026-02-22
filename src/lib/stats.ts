@@ -1,6 +1,34 @@
 import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { createNotification } from "@/lib/notifications";
+// src/lib/stats.ts
+import { db } from "@/lib/firebase";
+import { doc, increment, serverTimestamp, setDoc } from "firebase/firestore";
+
+/**
+ * Adds real focus minutes (from Pomodoro + Stopwatch) into stats/{uid}.
+ * - Does NOT touch profiles
+ * - Safe even if stats doc doesn't exist yet (merge:true)
+ */
+export async function addFocusMinutes(uid: string, minutes: number) {
+  if (!uid) throw new Error("addFocusMinutes: missing uid");
+  const m = Math.max(0, Math.floor(minutes));
+  if (m <= 0) return;
+
+  const ref = doc(db, "stats", uid);
+
+  await setDoc(
+    ref,
+    {
+      uid,
+      todayMinutes: increment(m),
+      weeklyMinutes: increment(m),
+      totalMinutes: increment(m),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
 
 
 export function ymd(date: Date = new Date()) {

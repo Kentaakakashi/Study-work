@@ -75,17 +75,22 @@ export function levelFromXp(xp: number) {
 }
 
 export async function addStudyMinutes(uid: string, minutes: number) {
-  if (!uid || !minutes || minutes <= 0) return;
+  const statsRef = doc(db, "stats", uid);
 
-  const ref = doc(db, "stats", uid);
-  const snap = await getDoc(ref);
-  const current = (snap.data() as StatsDoc) || (await ensureStats(uid));
-
-  const today = ymd();
-  const weekStart = mondayOfWeek();
-
-  const wasNewWeek = current.weekStart !== weekStart;
-  const lastActive = current.lastActiveDay || today;
+  await setDoc(
+    statsRef,
+    {
+      xp: increment(minutes),              // 1 XP per minute
+      totalMinutes: increment(minutes),
+      weeklyMinutes: increment(minutes),
+      today: {
+        [ymd()]: increment(minutes),
+      },
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
 
   // streak logic
   const lastDate = new Date(lastActive);

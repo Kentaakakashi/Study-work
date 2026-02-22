@@ -38,6 +38,7 @@ function dice(seed: string) {
 
 async function enrich(rows: StatRow[]) {
   const out: StatRow[] = [];
+
   await Promise.all(
     rows.map(async (r) => {
       try {
@@ -55,12 +56,13 @@ async function enrich(rows: StatRow[]) {
     })
   );
 
-  // keep original order from rows
+  // keep original order
   out.sort(
     (a, b) =>
       rows.findIndex((x) => x.uid === a.uid) -
       rows.findIndex((x) => x.uid === b.uid)
   );
+
   return out.filter((r) => !!r.uid);
 }
 
@@ -73,7 +75,7 @@ async function loadMyRow(myUid: string) {
   const s = (ss.data() as any) || {};
   const p = (ps.data() as Profile) || {};
 
-  const row: StatRow = {
+  return {
     uid: myUid,
     xp: typeof s.xp === "number" ? s.xp : 0,
     totalMinutes: typeof s.totalMinutes === "number" ? s.totalMinutes : 0,
@@ -82,9 +84,7 @@ async function loadMyRow(myUid: string) {
     displayName: p.displayName,
     username: p.username,
     photoURL: p.pfp || p.photoURL,
-  };
-
-  return row;
+  } as StatRow;
 }
 
 function LeaderCard({
@@ -158,18 +158,13 @@ export default function Leaderboard() {
   const [myRow, setMyRow] = useState<StatRow | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Top list (real #1..#25)
   useEffect(() => {
     setLoading(true);
 
     const q =
       tab === "global"
         ? query(collection(db, "stats"), orderBy("xp", "desc"), limit(25))
-        : query(
-            collection(db, "stats"),
-            orderBy("weeklyMinutes", "desc"),
-            limit(25)
-          );
+        : query(collection(db, "stats"), orderBy("weeklyMinutes", "desc"), limit(25));
 
     const unsub = onSnapshot(
       q,
@@ -190,7 +185,6 @@ export default function Leaderboard() {
     return () => unsub();
   }, [tab]);
 
-  // Load "my card" separately so we can pin it on top
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -212,13 +206,18 @@ export default function Leaderboard() {
 
   const list = useMemo(() => rows, [rows]);
 
-  // Where you appear in the top list (if you do)
   const myIndexInTop = useMemo(() => {
     if (!myUid) return -1;
     return list.findIndex((r) => r.uid === myUid);
   }, [myUid, list]);
 
   const showPinnedYou = !!myUid && !!myRow;
+
+  // ✅ Hide you from the main list if the pinned "Your Rank" card is shown
+  const listWithoutYou = useMemo(() => {
+    if (!showPinnedYou || !myUid) return list;
+    return list.filter((r) => r.uid !== myUid);
+  }, [list, myUid, showPinnedYou]);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -262,7 +261,7 @@ export default function Leaderboard() {
         <p className="text-sm text-muted-foreground">No leaderboard data yet.</p>
       ) : (
         <div className="space-y-3">
-          {/* ✅ PINNED "YOU" CARD (doesn't change real ranks below) */}
+          {/* ✅ PINNED "YOU" CARD */}
           {showPinnedYou && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -285,18 +284,20 @@ export default function Leaderboard() {
             </motion.div>
           )}
 
-          {/* ✅ REAL LIST (keeps true #1..#N positions) */}
-          {list.map((r, i) => (
-            <LeaderCard
-              key={r.uid}
-              row={r}
-              tab={tab}
-              isYou={!!myUid && r.uid === myUid}
-              rankLabel={`#${i + 1}`}
-            />
-          ))}
+          {/* ✅ REAL LIST (without you, so no duplicate “YOU” card) */}
+          {listWithoutYou.map((r) => {
+            const originalIndex = list.findIndex((x) => x.uid === r.uid);
+            return (
+              <LeaderCard
+                key={r.uid}
+                row={r}
+                tab={tab}
+                rankLabel={`#${originalIndex + 1}`}
+              />
+            );
+          })}
         </div>
       )}
     </div>
   );
-}
+              }

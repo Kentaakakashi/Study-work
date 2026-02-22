@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Trophy } from "lucide-react";
+import { Trophy, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth";
@@ -56,35 +56,7 @@ async function enrich(rows: StatRow[]) {
     })
   );
 
-  // keep original order
-  out.sort(
-    (a, b) =>
-      rows.findIndex((x) => x.uid === a.uid) -
-      rows.findIndex((x) => x.uid === b.uid)
-  );
-
   return out.filter((r) => !!r.uid);
-}
-
-async function loadMyRow(myUid: string) {
-  const [ss, ps] = await Promise.all([
-    getDoc(doc(db, "stats", myUid)),
-    getDoc(doc(db, "profiles", myUid)),
-  ]);
-
-  const s = (ss.data() as any) || {};
-  const p = (ps.data() as Profile) || {};
-
-  return {
-    uid: myUid,
-    xp: typeof s.xp === "number" ? s.xp : 0,
-    totalMinutes: typeof s.totalMinutes === "number" ? s.totalMinutes : 0,
-    weeklyMinutes: typeof s.weeklyMinutes === "number" ? s.weeklyMinutes : 0,
-    level: typeof s.level === "number" ? s.level : 1,
-    displayName: p.displayName,
-    username: p.username,
-    photoURL: p.pfp || p.photoURL,
-  } as StatRow;
 }
 
 function LeaderCard({
@@ -99,7 +71,6 @@ function LeaderCard({
   tab: "global" | "weekly";
 }) {
   const name = row.displayName || (row.username ? `@${row.username}` : "User");
-  const sub = row.username ? `@${row.username}` : row.uid.slice(0, 8);
   const pfp = row.photoURL || dice(row.username || row.displayName || row.uid);
 
   const xp = row.xp || 0;
@@ -109,17 +80,22 @@ function LeaderCard({
 
   const right = tab === "global" ? `${xp} XP` : `${minsWeek} min`;
 
+  const copyUid = async () => {
+    await navigator.clipboard.writeText(row.uid);
+    toast("UID copied");
+  };
+
   return (
     <div
       className={[
         "relative flex items-center justify-between gap-3 p-4 rounded-2xl border transition",
         isYou
-          ? "bg-primary/12 border-primary/35 ring-1 ring-primary/35 shadow-[0_0_24px_rgba(56,189,248,0.18)]"
+          ? "bg-primary/12 border-primary/35 shadow-[0_0_24px_rgba(56,189,248,0.18)]"
           : "bg-secondary/10 border-border/40",
       ].join(" ")}
     >
       {isYou && (
-        <div className="absolute -top-2 left-6 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide bg-primary/20 border border-primary/30 text-primary">
+        <div className="absolute -top-2 left-6 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/20 border border-primary/30 text-primary">
           YOU
         </div>
       )}
@@ -129,17 +105,24 @@ function LeaderCard({
           {rankLabel}
         </div>
 
-        <div className={isYou ? "relative" : ""}>
-          {isYou && (
-            <div className="absolute -inset-1 rounded-2xl blur-md bg-primary/25 pointer-events-none" />
-          )}
-          <img src={pfp} className="relative w-12 h-12 rounded-2xl object-cover" />
-        </div>
+        <img src={pfp} className="w-12 h-12 rounded-2xl object-cover" />
 
         <div className="min-w-0">
           <p className="font-semibold truncate">{name}</p>
+
+          {/* 🔥 UID DEBUG AREA */}
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="truncate max-w-[140px]">{row.uid}</span>
+            <button
+              onClick={copyUid}
+              className="hover:text-primary transition"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           <p className="text-xs text-muted-foreground truncate">
-            Lvl {lvl} • {xp} XP • {minsTotal} min total • {sub}
+            Lvl {lvl} • {xp} XP • {minsTotal} min total
           </p>
         </div>
       </div>
@@ -155,7 +138,6 @@ export default function Leaderboard() {
 
   const [tab, setTab] = useState<"global" | "weekly">("global");
   const [rows, setRows] = useState<StatRow[]>([]);
-  const [myRow, setMyRow] = useState<StatRow | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -166,58 +148,18 @@ export default function Leaderboard() {
         ? query(collection(db, "stats"), orderBy("xp", "desc"), limit(25))
         : query(collection(db, "stats"), orderBy("weeklyMinutes", "desc"), limit(25));
 
-    const unsub = onSnapshot(
-      q,
-      async (snap) => {
-        const raw: StatRow[] = [];
-        snap.forEach((d) => raw.push({ uid: d.id, ...(d.data() as any) }));
-
-        const filled = await enrich(raw);
-        setRows(filled);
-        setLoading(false);
-      },
-      (err) => {
-        toast(err?.message || "Couldn't load leaderboard");
-        setLoading(false);
-      }
-    );
+    const unsub = onSnapshot(q, async (snap) => {
+      const raw: StatRow[] = [];
+      snap.forEach((d) => raw.push({ uid: d.id, ...(d.data() as any) }));
+      const filled = await enrich(raw);
+      setRows(filled);
+      setLoading(false);
+    });
 
     return () => unsub();
   }, [tab]);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!myUid) {
-        setMyRow(null);
-        return;
-      }
-      try {
-        const r = await loadMyRow(myUid);
-        if (alive) setMyRow(r);
-      } catch {
-        if (alive) setMyRow(null);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [myUid]);
-
   const list = useMemo(() => rows, [rows]);
-
-  const myIndexInTop = useMemo(() => {
-    if (!myUid) return -1;
-    return list.findIndex((r) => r.uid === myUid);
-  }, [myUid, list]);
-
-  const showPinnedYou = !!myUid && !!myRow;
-
-  // ✅ Hide you from the main list if the pinned "Your Rank" card is shown
-  const listWithoutYou = useMemo(() => {
-    if (!showPinnedYou || !myUid) return list;
-    return list.filter((r) => r.uid !== myUid);
-  }, [list, myUid, showPinnedYou]);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -257,47 +199,19 @@ export default function Leaderboard() {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : list.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No leaderboard data yet.</p>
       ) : (
         <div className="space-y-3">
-          {/* ✅ PINNED "YOU" CARD */}
-          {showPinnedYou && (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="glass-card p-4 rounded-3xl border border-primary/20"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <p className="font-semibold">Your Rank</p>
-                <p className="text-xs text-muted-foreground">
-                  {myIndexInTop >= 0 ? `In Top ${list.length}` : "Not in Top list yet"}
-                </p>
-              </div>
-
-              <LeaderCard
-                row={myRow!}
-                tab={tab}
-                isYou
-                rankLabel={myIndexInTop >= 0 ? `#${myIndexInTop + 1}` : "—"}
-              />
-            </motion.div>
-          )}
-
-          {/* ✅ REAL LIST (without you, so no duplicate “YOU” card) */}
-          {listWithoutYou.map((r) => {
-            const originalIndex = list.findIndex((x) => x.uid === r.uid);
-            return (
-              <LeaderCard
-                key={r.uid}
-                row={r}
-                tab={tab}
-                rankLabel={`#${originalIndex + 1}`}
-              />
-            );
-          })}
+          {list.map((r, i) => (
+            <LeaderCard
+              key={r.uid}
+              row={r}
+              tab={tab}
+              rankLabel={`#${i + 1}`}
+              isYou={r.uid === myUid}
+            />
+          ))}
         </div>
       )}
     </div>
   );
-              }
+}

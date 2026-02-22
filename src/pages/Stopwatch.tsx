@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Play, Pause, Square, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { Link } from "react-router-dom";
 import { addStudyMinutes } from "@/lib/stats";
 import { useFocus } from "@/context/FocusContext";
 
@@ -60,6 +61,24 @@ const Stopwatch = () => {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {/* Focus mode switch */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-3 rounded-2xl">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Focus</p>
+            <p className="text-xs text-muted-foreground truncate">Switch between Pomodoro and Stopwatch</p>
+          </div>
+          <div className="flex items-center gap-1 rounded-2xl bg-secondary/20 border border-border/40 p-1">
+            <Link to="/focus/pomodoro" className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition">
+              Pomodoro
+            </Link>
+            <span className="px-4 py-2 rounded-xl text-sm font-semibold bg-primary/20 border border-primary/30">
+              Stopwatch
+            </span>
+          </div>
+        </div>
+      </motion.div>
+
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 rounded-2xl">
         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subject</label>
         <select

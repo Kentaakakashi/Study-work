@@ -2,8 +2,24 @@ import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from "fire
 import { db } from "@/lib/firebase";
 import { createNotification } from "@/lib/notifications";
 
+
 export function ymd(date: Date = new Date()) {
   return date.toISOString().slice(0, 10);
+}
+
+export function levelFromXp(xp: number) {
+  const safe = Math.max(0, Math.floor(xp || 0));
+
+  const level = Math.floor(safe / 250) + 1;
+  const intoLevel = safe - (level - 1) * 250;
+  const xpProgress = (intoLevel / 250) * 100;
+  const nextLevelXp = level * 250;
+
+  return {
+    level,
+    nextLevelXp,
+    xpProgress,
+  };
 }
 
 export async function ensureStats(uid: string) {

@@ -27,12 +27,28 @@ function dice(seed: string) {
   return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed || "user")}`;
 }
 
-async function enrich(rows: StatRow[]) {
+function normUsername(s?: string) {
+  return (s || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/^@+/, "")
+    .replace(/[^a-z0-9_\.]/g, "");
+}
+
+/**
+ * Enrich stats rows with profile data.
+ * HARD RULE:
+ *  - If profile doc does NOT exist -> skip that user (prevents "User" ghosts)
+ */
+async function enrichWithProfiles(rows: StatRow[]) {
   const out: StatRow[] = [];
+
   await Promise.all(
     rows.map(async (r) => {
       try {
         const ps = await getDoc(doc(db, "profiles", r.uid));
+        if (!ps.exists()) return; // ✅ skip deleted/ghost users
+
         const p = (ps.data() as Profile) || {};
         out.push({
           ...r,
@@ -41,13 +57,36 @@ async function enrich(rows: StatRow[]) {
           photoURL: p.pfp || p.photoURL || r.photoURL,
         });
       } catch {
-        out.push(r);
+        // If profile read fails for any reason, skip (keeps leaderboard clean)
+        return;
       }
     })
   );
 
+  // keep original order as much as possible
   out.sort((a, b) => rows.findIndex((x) => x.uid === a.uid) - rows.findIndex((x) => x.uid === b.uid));
   return out.filter((r) => !!r.uid);
+}
+
+/**
+ * Dedupe:
+ * - If same username appears multiple times (old bug leftovers), keep ONLY best score.
+ * - If username missing, fall back to uid (so those are unique).
+ */
+function dedupe(rows: StatRow[], mode: "global" | "weekly") {
+  const best = new Map<string, StatRow>();
+
+  for (const r of rows) {
+    const key = normUsername(r.username) || `uid:${r.uid}`;
+    const prev = best.get(key);
+
+    const score = mode === "global" ? (r.xp || 0) : (r.weeklyMinutes || 0);
+    const prevScore = mode === "global" ? (prev?.xp || 0) : (prev?.weeklyMinutes || 0);
+
+    if (!prev || score > prevScore) best.set(key, r);
+  }
+
+  return Array.from(best.values());
 }
 
 export default function Leaderboard() {
@@ -58,10 +97,12 @@ export default function Leaderboard() {
   useEffect(() => {
     setLoading(true);
 
+    // still reading from stats because that's where XP/minutes live,
+    // but we now ONLY show rows that have an existing profile.
     const q =
       tab === "global"
-        ? query(collection(db, "stats"), orderBy("xp", "desc"), limit(25))
-        : query(collection(db, "stats"), orderBy("weeklyMinutes", "desc"), limit(25));
+        ? query(collection(db, "stats"), orderBy("xp", "desc"), limit(50))
+        : query(collection(db, "stats"), orderBy("weeklyMinutes", "desc"), limit(50));
 
     const unsub = onSnapshot(
       q,
@@ -69,8 +110,19 @@ export default function Leaderboard() {
         const raw: StatRow[] = [];
         snap.forEach((d) => raw.push({ uid: d.id, ...(d.data() as any) }));
 
-        const filled = await enrich(raw);
-        setRows(filled);
+        const filled = await enrichWithProfiles(raw);
+
+        // ✅ Remove duplicates caused by old username/account bugs
+        const unique = dedupe(filled, tab);
+
+        // ✅ Re-sort after dedupe (because Map order can change)
+        unique.sort((a, b) => {
+          const as = tab === "global" ? (a.xp || 0) : (a.weeklyMinutes || 0);
+          const bs = tab === "global" ? (b.xp || 0) : (b.weeklyMinutes || 0);
+          return bs - as;
+        });
+
+        setRows(unique.slice(0, 25));
         setLoading(false);
       },
       (err) => {
@@ -110,6 +162,10 @@ export default function Leaderboard() {
             Weekly (Minutes)
           </button>
         </div>
+
+        <p className="text-xs text-muted-foreground mt-2">
+          Only real profiles show up. Deleted/ghost accounts won’t pollute the board anymore.
+        </p>
       </motion.div>
 
       {loading ? (
@@ -122,10 +178,12 @@ export default function Leaderboard() {
             const name = r.displayName || (r.username ? `@${r.username}` : "User");
             const sub = r.username ? `@${r.username}` : r.uid.slice(0, 8);
             const pfp = r.photoURL || dice(r.username || r.displayName || r.uid);
+
             const xp = r.xp || 0;
             const minsTotal = r.totalMinutes || 0;
             const minsWeek = r.weeklyMinutes || 0;
             const lvl = r.level || 1;
+
             const right = tab === "global" ? `${xp} XP` : `${minsWeek} min`;
 
             return (

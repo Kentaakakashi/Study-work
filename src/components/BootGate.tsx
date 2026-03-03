@@ -8,26 +8,25 @@ type BootGateProps = {
 
 export default function BootGate({ children }: BootGateProps) {
   const { user } = useAuth();
-  const [showBoot, setShowBoot] = useState(true);
 
-  const key = useMemo(() => {
-    // Per-user storage key, so each user gets their own first-time boot
+  const storageKey = useMemo(() => {
     return user?.uid ? `bootSeen:${user.uid}` : "bootSeen:guest";
   }, [user?.uid]);
 
   const isFirstTime = useMemo(() => {
     if (!user?.uid) return false;
-    return localStorage.getItem(key) !== "1";
-  }, [key, user?.uid]);
+    return localStorage.getItem(storageKey) !== "1";
+  }, [storageKey, user?.uid]);
+
+  // Always show boot when entering app while logged in
+  const [showBoot, setShowBoot] = useState(true);
 
   useEffect(() => {
-    // On mount, show boot every time user enters the app while logged in
-    // If you want “only first time ever”, set showBoot(false) when already seen.
     setShowBoot(true);
   }, [user?.uid]);
 
   const finish = () => {
-    if (user?.uid) localStorage.setItem(key, "1");
+    if (user?.uid) localStorage.setItem(storageKey, "1");
     setShowBoot(false);
   };
 
@@ -35,7 +34,8 @@ export default function BootGate({ children }: BootGateProps) {
     return (
       <BootScreen
         isFirstTime={isFirstTime}
-        durationMs={isFirstTime ? 3600 : 2200}
+        // slower + readable
+        totalMs={isFirstTime ? 7500 : 5200}
         onDone={finish}
       />
     );

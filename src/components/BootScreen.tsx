@@ -24,7 +24,7 @@ export default function BootScreen({
       "Calibrating timer accuracy…",
       "Doing a lil stretch...",
       "Syncing progress & stats…",
-      "Warming up AI Tutor (wake tf up man)…",
+      "Warming up AI Tutor (wake tf up dawg)…",
       "Connecting community feed…",
       "Final polish: removing distractions…",
       "Ready 😼📖",

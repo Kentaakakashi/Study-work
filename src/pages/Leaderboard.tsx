@@ -4,6 +4,7 @@ import { Trophy, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
+import OwnerBadge from "@/components/OwnerBadge";
 import {
   collection,
   doc,
@@ -15,7 +16,7 @@ import {
 } from "firebase/firestore";
 
 type StatsDoc = {
-  uid?: string; // sometimes doc id is the uid, sometimes field exists
+  uid?: string;
   displayName?: string;
   username?: string;
   photoURL?: string;
@@ -23,6 +24,9 @@ type StatsDoc = {
   xp?: number;
   totalMinutes?: number;
   weeklyMinutes?: number;
+
+  // ✅ NEW
+  role?: "owner" | "member";
 };
 
 type ProfileDoc = {
@@ -30,6 +34,9 @@ type ProfileDoc = {
   username?: string;
   photoURL?: string;
   pfp?: string;
+
+  // ✅ NEW
+  role?: "owner" | "member";
 };
 
 function dice(seed: string) {
@@ -39,7 +46,6 @@ function dice(seed: string) {
 }
 
 function levelFromXp(xp: number) {
-  // matches your "70 / 250 XP" type vibe
   const perLevel = 250;
   const lvl = Math.floor((xp || 0) / perLevel) + 1;
   const inLevel = (xp || 0) % perLevel;
@@ -52,7 +58,6 @@ export default function Leaderboard() {
   const [rows, setRows] = useState<StatsDoc[]>([]);
   const [profiles, setProfiles] = useState<Record<string, ProfileDoc>>({});
 
-  // pull missing username/displayName/photo from /profiles as fallback (keeps board “legit”)
   const loadProfile = async (uid: string) => {
     if (!uid) return;
     if (profiles[uid]) return;
@@ -62,7 +67,7 @@ export default function Leaderboard() {
       const p = (snap.data() as ProfileDoc) || {};
       setProfiles((prev) => ({ ...prev, [uid]: p }));
     } catch {
-      // ignore silently
+      // ignore
     }
   };
 
@@ -86,8 +91,6 @@ export default function Leaderboard() {
           arr.push({ ...data, uid });
         });
         setRows(arr);
-
-        // preload profiles for visible users (fallback)
         arr.slice(0, 50).forEach((r) => r.uid && loadProfile(r.uid));
       },
       (err) => {
@@ -118,7 +121,9 @@ export default function Leaderboard() {
     const username = r.username || p.username || "unknown";
     const photoURL = r.photoURL || r.pfp || p.photoURL || p.pfp || "";
     const avatar = photoURL || dice(username || displayName || uid);
-    return { displayName, username, avatar };
+
+    const role = (r.role || p.role || "member") as "owner" | "member";
+    return { displayName, username, avatar, role };
   };
 
   const metricText = (r: StatsDoc) => {
@@ -146,7 +151,7 @@ export default function Leaderboard() {
 
   const renderCard = (r: StatsDoc, rank: number, isYou: boolean) => {
     const uid = r.uid || "";
-    const { displayName, username, avatar } = pickIdentity(r);
+    const { displayName, username, avatar, role } = pickIdentity(r);
     const m = metricText(r);
 
     const youGlow = isYou
@@ -176,7 +181,10 @@ export default function Leaderboard() {
           />
 
           <div className="min-w-0">
-            <p className="font-semibold truncate">{displayName}</p>
+            <p className="font-semibold truncate flex items-center">
+              <span className="truncate">{displayName}</span>
+              {role === "owner" && <OwnerBadge />}
+            </p>
             <p className="text-xs text-muted-foreground truncate">
               {m.sub} • @{username}
             </p>
@@ -195,7 +203,6 @@ export default function Leaderboard() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header + tabs (YOUR OLD DESIGN) */}
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
@@ -228,7 +235,6 @@ export default function Leaderboard() {
         </div>
       </motion.div>
 
-      {/* Your Rank card (same premium style, no UID/copy stuff) */}
       {user && yourRow && (
         <motion.div
           initial={{ opacity: 0, y: 18 }}
@@ -248,7 +254,6 @@ export default function Leaderboard() {
         </motion.div>
       )}
 
-      {/* Main list (old design cards) */}
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
@@ -264,4 +269,4 @@ export default function Leaderboard() {
       </motion.div>
     </div>
   );
-              }
+}

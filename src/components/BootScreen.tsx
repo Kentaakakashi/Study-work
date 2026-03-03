@@ -20,19 +20,19 @@ export default function BootScreen({
   const steps = useMemo(() => {
     const common = [
       "Opening your study desk…",
-      "Loading Focus Engine (Pomodoro + Stopwatch)…",
+      "Loading Focus Engine",
       "Calibrating timer accuracy…",
-      "Preparing planner workspace…",
+      "Doing a lil stretch...",
       "Syncing progress & stats…",
-      "Warming up AI Tutor…",
+      "Warming up AI Tutor (wake tf up man)…",
       "Connecting community feed…",
-      "Final polish: removing distractions (politely)…",
-      "Ready ✅",
+      "Final polish: removing distractions…",
+      "Ready 😼📖",
     ];
 
     if (isFirstTime) {
       return [
-        "Welcome to Study Zen 👋",
+        "Welcome to Study Zen gng 👋",
         "Creating your workspace…",
         "Setting up your profile…",
         "Building your first dashboard…",
@@ -174,7 +174,7 @@ export default function BootScreen({
 
           {/* Footer hint */}
           <p className="mt-4 text-xs text-muted-foreground">
-            Pro tip: good systems make studying feel unfair (in a good way).
+            Warning ⚠️: If boot-up fails, feel free to dump the issue on lemon in our server fr, she'll fix it 🎀.
           </p>
         </div>
       </motion.div>

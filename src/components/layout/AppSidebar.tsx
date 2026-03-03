@@ -12,9 +12,20 @@ import {
   Bell,
   Award,
   Trophy,
+  LifeBuoy,
+  Shield,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { isOwnerUid } from "@/lib/roles";
 
-const navItems = [
+type NavItem = {
+  title: string;
+  path: string;
+  icon: any;
+  ownerOnly?: boolean;
+};
+
+const navItems: NavItem[] = [
   { title: "Home", path: "/home", icon: Home },
   { title: "Focus", path: "/focus/pomodoro", icon: Timer },
   { title: "Planner", path: "/planner", icon: CalendarDays },
@@ -25,17 +36,31 @@ const navItems = [
   { title: "Badges", path: "/badges", icon: Award },
   { title: "Notifications", path: "/notifications", icon: Bell },
   { title: "AI Tutor", path: "/ai", icon: Bot },
+
+  // ✅ Support for everyone
+  { title: "Support", path: "/support", icon: LifeBuoy },
+
+  // ✅ Admin for owners only
+  { title: "Admin", path: "/admin", icon: Shield, ownerOnly: true },
+
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 
 const AppSidebar = () => {
   const location = useLocation();
+  const { user, profile } = useAuth();
+
+  const isOwner = (profile?.role === "owner") || isOwnerUid(user?.uid);
 
   const isActive = (path: string) => {
     if (path === "/focus/pomodoro") return location.pathname.startsWith("/focus");
     if (path === "/community") return location.pathname.startsWith("/community");
+    if (path === "/support") return location.pathname.startsWith("/support");
+    if (path === "/admin") return location.pathname.startsWith("/admin");
     return location.pathname === path;
   };
+
+  const visibleItems = navItems.filter((i) => !i.ownerOnly || isOwner);
 
   return (
     <aside className="hidden md:flex flex-col w-64 h-screen glass-card border-r border-border/50 sticky top-0 z-40">
@@ -43,11 +68,11 @@ const AppSidebar = () => {
         <div className="w-9 h-9 rounded-lg flex items-center justify-center glow-button p-0">
           <Zap className="w-5 h-5" />
         </div>
-        <span className="text-lg font-bold tracking-tight text-gradient">Study Zone</span>
+        <span className="text-lg font-bold tracking-tight text-gradient">Study Zen</span>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => (
+        {visibleItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
@@ -62,20 +87,29 @@ const AppSidebar = () => {
             {isActive(item.path) && (
               <div className="absolute left-0 w-0.5 h-6 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.5)]" />
             )}
+
             <item.icon
               className={`w-5 h-5 transition-transform duration-200 group-hover:scale-110 ${
                 isActive(item.path) ? "text-primary" : ""
               }`}
             />
-            <span>{item.title}</span>
+
+            <span className="flex items-center gap-2">
+              {item.title}
+              {item.ownerOnly && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 border border-primary/25 text-primary">
+                  OWNER
+                </span>
+              )}
+            </span>
           </NavLink>
         ))}
       </nav>
 
       <div className="px-4 py-4 border-t border-border/30">
         <div className="glass-card p-3 rounded-lg text-center">
-          <p className="text-xs text-muted-foreground">Study Zone v1.0</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Your study community</p>
+          <p className="text-xs text-muted-foreground">Study Zen</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Focus • Plan • Grow</p>
         </div>
       </div>
     </aside>

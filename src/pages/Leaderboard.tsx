@@ -1,19 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Trophy, CalendarDays } from "lucide-react";
+import { Trophy, CalendarDays, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
+import { isOwnerUid } from "@/lib/roles";
 import OwnerBadge from "@/components/OwnerBadge";
-import {
-  collection,
-  doc,
-  getDoc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-} from "firebase/firestore";
+import { collection, doc, getDoc, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 
 type StatsDoc = {
   uid?: string;
@@ -24,8 +17,6 @@ type StatsDoc = {
   xp?: number;
   totalMinutes?: number;
   weeklyMinutes?: number;
-
-  // ✅ NEW
   role?: "owner" | "member";
 };
 
@@ -34,26 +25,23 @@ type ProfileDoc = {
   username?: string;
   photoURL?: string;
   pfp?: string;
-
-  // ✅ NEW
   role?: "owner" | "member";
 };
 
 function dice(seed: string) {
-  return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-    seed || "user"
-  )}`;
+  return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed || "user")}`;
 }
 
 function levelFromXp(xp: number) {
   const perLevel = 250;
   const lvl = Math.floor((xp || 0) / perLevel) + 1;
-  const inLevel = (xp || 0) % perLevel;
-  return { level: lvl, inLevel, perLevel };
+  return { level: lvl };
 }
 
 export default function Leaderboard() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isOwner = (profile?.role === "owner") || isOwnerUid(user?.uid);
+
   const [mode, setMode] = useState<"xp" | "weekly">("xp");
   const [rows, setRows] = useState<StatsDoc[]>([]);
   const [profiles, setProfiles] = useState<Record<string, ProfileDoc>>({});
@@ -61,25 +49,17 @@ export default function Leaderboard() {
   const loadProfile = async (uid: string) => {
     if (!uid) return;
     if (profiles[uid]) return;
-
     try {
       const snap = await getDoc(doc(db, "profiles", uid));
-      const p = (snap.data() as ProfileDoc) || {};
-      setProfiles((prev) => ({ ...prev, [uid]: p }));
-    } catch {
-      // ignore
-    }
+      setProfiles((prev) => ({ ...prev, [uid]: (snap.data() as ProfileDoc) || {} }));
+    } catch {}
   };
 
   useEffect(() => {
     const q =
       mode === "xp"
         ? query(collection(db, "stats"), orderBy("xp", "desc"), limit(50))
-        : query(
-            collection(db, "stats"),
-            orderBy("weeklyMinutes", "desc"),
-            limit(50)
-          );
+        : query(collection(db, "stats"), orderBy("weeklyMinutes", "desc"), limit(50));
 
     const unsub = onSnapshot(
       q,
@@ -91,10 +71,10 @@ export default function Leaderboard() {
           arr.push({ ...data, uid });
         });
         setRows(arr);
-        arr.slice(0, 50).forEach((r) => r.uid && loadProfile(r.uid));
+        arr.forEach((r) => r.uid && loadProfile(r.uid));
       },
       (err) => {
-        console.error("Leaderboard snapshot error:", err);
+        console.error("Leaderboard error:", err);
         toast(err?.message || "Leaderboard failed to load");
       }
     );
@@ -104,15 +84,6 @@ export default function Leaderboard() {
   }, [mode]);
 
   const youUid = user?.uid || "";
-  const yourIndex = useMemo(
-    () => rows.findIndex((r) => (r.uid || "") === youUid),
-    [rows, youUid]
-  );
-
-  const yourRow = useMemo(() => {
-    if (!youUid) return null;
-    return yourIndex >= 0 ? rows[yourIndex] : null;
-  }, [youUid, yourIndex, rows]);
 
   const pickIdentity = (r: StatsDoc) => {
     const uid = r.uid || "";
@@ -121,9 +92,8 @@ export default function Leaderboard() {
     const username = r.username || p.username || "unknown";
     const photoURL = r.photoURL || r.pfp || p.photoURL || p.pfp || "";
     const avatar = photoURL || dice(username || displayName || uid);
-
     const role = (r.role || p.role || "member") as "owner" | "member";
-    return { displayName, username, avatar, role };
+    return { uid, displayName, username, avatar, role };
   };
 
   const metricText = (r: StatsDoc) => {
@@ -132,82 +102,33 @@ export default function Leaderboard() {
     const weekly = Number(r.weeklyMinutes || 0);
     const { level } = levelFromXp(xp);
 
-    if (mode === "xp") {
-      return {
-        right: `${xp}`,
-        rightUnit: "XP",
-        sub: `Lvl ${level} • ${xp} XP • ${total} min total`,
-      };
-    }
-    return {
-      right: `${weekly}`,
-      rightUnit: "MIN",
-      sub: `This week • ${weekly} min • ${total} min total`,
-    };
+    if (mode === "xp") return { right: `${xp}`, unit: "XP", sub: `Lvl ${level} • ${total} min total` };
+    return { right: `${weekly}`, unit: "MIN", sub: `This week • ${total} min total` };
   };
 
-  const pill =
-    "px-3 py-1 rounded-full bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition";
-
-  const renderCard = (r: StatsDoc, rank: number, isYou: boolean) => {
-    const uid = r.uid || "";
-    const { displayName, username, avatar, role } = pickIdentity(r);
-    const m = metricText(r);
-
-    const youGlow = isYou
-      ? "border-primary/50 shadow-[0_0_30px_rgba(20,184,166,0.35)]"
-      : "border-border/40";
-
-    return (
-      <div
-        key={`${uid}_${rank}_${mode}`}
-        className={`relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-secondary/15 border ${youGlow}`}
-      >
-        {isYou && (
-          <div className="absolute -top-2 left-4 text-[10px] tracking-wider font-semibold px-2 py-0.5 rounded-full bg-primary/25 border border-primary/30">
-            YOU
-          </div>
-        )}
-
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 text-center">
-            <span className="text-primary font-bold">#{rank}</span>
-          </div>
-
-          <img
-            src={avatar}
-            className="w-12 h-12 rounded-2xl object-cover"
-            alt="avatar"
-          />
-
-          <div className="min-w-0">
-            <p className="font-semibold truncate flex items-center">
-              <span className="truncate">{displayName}</span>
-              {role === "owner" && <OwnerBadge />}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">
-              {m.sub} • @{username}
-            </p>
-          </div>
-        </div>
-
-        <div className="text-right">
-          <p className="text-primary font-bold text-lg leading-none">
-            {m.right}
-          </p>
-          <p className="text-primary/80 font-semibold text-xs">{m.rightUnit}</p>
-        </div>
-      </div>
-    );
+  const copyUid = async (uid: string) => {
+    try {
+      await navigator.clipboard.writeText(uid);
+      toast(`Copied UID ✅ (${uid.slice(0, 6)}...)`);
+    } catch {
+      // fallback (some browsers block clipboard)
+      try {
+        const el = document.createElement("textarea");
+        el.value = uid;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+        toast(`Copied UID ✅ (${uid.slice(0, 6)}...)`);
+      } catch {
+        toast("Couldn’t copy UID");
+      }
+    }
   };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-6 rounded-3xl"
-      >
+      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Trophy className="w-5 h-5 text-primary" />
@@ -219,7 +140,9 @@ export default function Leaderboard() {
           <button
             type="button"
             onClick={() => setMode("xp")}
-            className={`${pill} ${mode === "xp" ? "bg-primary/20 border-primary/30" : ""}`}
+            className={`px-3 py-1 rounded-full bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition ${
+              mode === "xp" ? "bg-primary/20 border-primary/30" : ""
+            }`}
           >
             Global (XP)
           </button>
@@ -227,7 +150,9 @@ export default function Leaderboard() {
           <button
             type="button"
             onClick={() => setMode("weekly")}
-            className={`${pill} ${mode === "weekly" ? "bg-primary/20 border-primary/30" : ""}`}
+            className={`px-3 py-1 rounded-full bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition ${
+              mode === "weekly" ? "bg-primary/20 border-primary/30" : ""
+            }`}
           >
             <CalendarDays className="w-4 h-4 inline mr-1" />
             Weekly (Minutes)
@@ -235,35 +160,69 @@ export default function Leaderboard() {
         </div>
       </motion.div>
 
-      {user && yourRow && (
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-6 rounded-3xl"
-        >
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Your Rank</h3>
-            <span className="text-xs text-muted-foreground">
-              In Top {rows.length}
-            </span>
-          </div>
-
-          <div className="mt-4">
-            {renderCard(yourRow, yourIndex + 1, true)}
-          </div>
-        </motion.div>
-      )}
-
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-6 rounded-3xl"
-      >
+      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
         <div className="space-y-3">
           {rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">No data yet.</p>
           ) : (
-            rows.map((r, i) => renderCard(r, i + 1, (r.uid || "") === youUid))
+            rows.map((r, i) => {
+              const id = pickIdentity(r);
+              const m = metricText(r);
+              const isYou = id.uid === youUid;
+
+              return (
+                <div
+                  key={`${id.uid}_${mode}_${i}`}
+                  className={`relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-secondary/15 border ${
+                    isYou ? "border-primary/50 shadow-[0_0_30px_rgba(20,184,166,0.35)]" : "border-border/40"
+                  }`}
+                >
+                  {isYou && (
+                    <div className="absolute -top-2 left-4 text-[10px] tracking-wider font-semibold px-2 py-0.5 rounded-full bg-primary/25 border border-primary/30">
+                      YOU
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 text-center">
+                      <span className="text-primary font-bold">#{i + 1}</span>
+                    </div>
+
+                    <img src={id.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="avatar" />
+
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate flex items-center">
+                        <span className="truncate">{id.displayName}</span>
+                        {id.role === "owner" && <OwnerBadge />}
+                      </p>
+
+                      <p className="text-xs text-muted-foreground truncate">
+                        {m.sub} • @{id.username}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Owner-only UID copy */}
+                    {isOwner && id.uid && (
+                      <button
+                        onClick={() => copyUid(id.uid)}
+                        className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-xs hover:bg-secondary/30 transition"
+                        title="Copy Firebase Auth UID"
+                      >
+                        <Copy className="w-4 h-4 inline mr-1" />
+                        UID
+                      </button>
+                    )}
+
+                    <div className="text-right">
+                      <p className="text-primary font-bold text-lg leading-none">{m.right}</p>
+                      <p className="text-primary/80 font-semibold text-xs">{m.unit}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       </motion.div>

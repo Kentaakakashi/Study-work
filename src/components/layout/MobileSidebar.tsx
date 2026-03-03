@@ -11,16 +11,37 @@ import {
   Settings,
   X,
   Zap,
+  LifeBuoy,
+  Shield,
+  Bell,
+  Trophy,
+  Award,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { isOwnerUid } from "@/lib/roles";
 
-const navItems = [
+type NavItem = {
+  title: string;
+  path: string;
+  icon: any;
+  ownerOnly?: boolean;
+};
+
+const navItems: NavItem[] = [
   { title: "Home", path: "/home", icon: Home },
   { title: "Focus", path: "/focus/pomodoro", icon: Timer },
   { title: "Planner", path: "/planner", icon: CalendarDays },
   { title: "Community", path: "/community", icon: Users },
   { title: "Friends", path: "/friends", icon: UserPlus },
   { title: "Stats", path: "/stats", icon: BarChart3 },
+  { title: "Leaderboard", path: "/leaderboard", icon: Trophy },
+  { title: "Badges", path: "/badges", icon: Award },
+  { title: "Notifs", path: "/notifications", icon: Bell },
   { title: "AI Tutor", path: "/ai", icon: Bot },
+
+  { title: "Support", path: "/support", icon: LifeBuoy },
+  { title: "Admin", path: "/admin", icon: Shield, ownerOnly: true },
+
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 
@@ -32,9 +53,17 @@ export default function MobileSidebar({
   onClose: () => void;
 }) {
   const location = useLocation();
+  const { user, profile } = useAuth();
+
+  const isOwner = (profile?.role === "owner") || isOwnerUid(user?.uid);
+
+  const visibleItems = navItems.filter((i) => !i.ownerOnly || isOwner);
 
   const isActive = (path: string) => {
     if (path === "/focus/pomodoro") return location.pathname.startsWith("/focus");
+    if (path === "/community") return location.pathname.startsWith("/community");
+    if (path === "/support") return location.pathname.startsWith("/support");
+    if (path === "/admin") return location.pathname.startsWith("/admin");
     return location.pathname === path;
   };
 
@@ -42,81 +71,63 @@ export default function MobileSidebar({
     <AnimatePresence>
       {open && (
         <>
-          {/* Overlay */}
-          <motion.button
-            aria-label="Close menu overlay"
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+          <motion.div
+            className="fixed inset-0 bg-black/50 z-50"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
           />
-
-          {/* Drawer */}
           <motion.aside
-            className="fixed left-0 top-0 bottom-0 z-50 w-72 md:hidden glass-card border-r border-border/50"
-            initial={{ x: -320, opacity: 0.6 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -320, opacity: 0.6 }}
-            transition={{ type: "spring", stiffness: 260, damping: 28 }}
+            className="fixed left-0 top-0 bottom-0 w-72 glass-card border-r border-border/50 z-[60] p-4"
+            initial={{ x: -320 }}
+            animate={{ x: 0 }}
+            exit={{ x: -320 }}
+            transition={{ type: "spring", stiffness: 260, damping: 26 }}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center glow-button p-0">
                   <Zap className="w-5 h-5" />
                 </div>
-                <span className="text-lg font-bold tracking-tight text-gradient">
-                  Study Zone
-                </span>
+                <span className="text-lg font-bold tracking-tight text-gradient">Study Zen</span>
               </div>
 
               <button
                 onClick={onClose}
-                className="p-2 rounded-lg hover:bg-secondary/50 transition-colors"
-                aria-label="Close menu"
+                className="p-2 rounded-lg hover:bg-secondary/50 transition"
               >
-                <X className="w-5 h-5 text-muted-foreground" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Nav */}
-            <nav className="px-3 py-4 space-y-1 overflow-y-auto">
-              {navItems.map((item) => (
+            <nav className="space-y-1">
+              {visibleItems.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   onClick={onClose}
                   className={() =>
-                    `relative flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
+                    `flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                       isActive(item.path)
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                     }`
                   }
                 >
-                  {isActive(item.path) && (
-                    <div className="absolute left-0 w-0.5 h-6 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.5)]" />
+                  <span className="flex items-center gap-3">
+                    <item.icon className="w-5 h-5" />
+                    <span>{item.title}</span>
+                  </span>
+
+                  {item.ownerOnly && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 border border-primary/25 text-primary">
+                      OWNER
+                    </span>
                   )}
-                  <item.icon
-                    className={`w-5 h-5 transition-transform duration-200 group-hover:scale-110 ${
-                      isActive(item.path) ? "text-primary" : ""
-                    }`}
-                  />
-                  <span>{item.title}</span>
                 </NavLink>
               ))}
             </nav>
-
-            {/* Footer */}
-            <div className="px-4 py-4 border-t border-border/30">
-              <div className="glass-card p-3 rounded-lg text-center">
-                <p className="text-xs text-muted-foreground">Study Zone v1.0</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Your study community
-                </p>
-              </div>
-            </div>
           </motion.aside>
         </>
       )}

@@ -24,8 +24,17 @@ import Notifications from "./pages/Notifications";
 import Badges from "./pages/Badges";
 import Leaderboard from "./pages/Leaderboard";
 
+import Support from "./pages/Support";
+import SupportNew from "./pages/SupportNew";
+import SupportTicket from "./pages/SupportTicket";
+
+import Admin from "./pages/Admin";
+import AdminTickets from "./pages/AdminTickets";
+import AdminTicket from "./pages/AdminTicket";
+
 import ProtectedRoute from "@/components/ProtectedRoute";
 import BootGate from "@/components/BootGate";
+import OwnerRoute from "@/components/OwnerRoute";
 
 const queryClient = new QueryClient();
 
@@ -56,7 +65,7 @@ const App = () => (
           }
         />
 
-        {/* Protected: Boot happens ONLY for logged-in users */}
+        {/* Protected */}
         <Route
           element={
             <ProtectedRoute>
@@ -79,6 +88,37 @@ const App = () => (
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/ai" element={<AITutor />} />
           <Route path="/settings" element={<Settings />} />
+
+          {/* Support (for everyone logged in) */}
+          <Route path="/support" element={<Support />} />
+          <Route path="/support/new" element={<SupportNew />} />
+          <Route path="/support/:ticketId" element={<SupportTicket />} />
+
+          {/* Admin (owners only) */}
+          <Route
+            path="/admin"
+            element={
+              <OwnerRoute>
+                <Admin />
+              </OwnerRoute>
+            }
+          />
+          <Route
+            path="/admin/tickets"
+            element={
+              <OwnerRoute>
+                <AdminTickets />
+              </OwnerRoute>
+            }
+          />
+          <Route
+            path="/admin/tickets/:ticketId"
+            element={
+              <OwnerRoute>
+                <AdminTicket />
+              </OwnerRoute>
+            }
+          />
         </Route>
 
         {/* 404 */}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { LifeBuoy, Plus, Ticket } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { subscribeMyTickets, type SupportTicket } from "@/lib/support";
 
@@ -10,7 +11,15 @@ export default function Support() {
 
   useEffect(() => {
     if (!user) return;
-    return subscribeMyTickets(user.uid, setTickets);
+
+    return subscribeMyTickets(
+      user.uid,
+      setTickets,
+      (err) => {
+        console.error("Support tickets query failed:", err);
+        toast(err?.message || "Couldn’t load your tickets (permission/index issue)");
+      }
+    );
   }, [user?.uid]);
 
   return (
@@ -29,8 +38,8 @@ export default function Support() {
 
       <div className="glass-card p-5 rounded-3xl">
         <p className="text-sm text-muted-foreground">
-          {profile?.displayName ? `Hey ${profile.displayName},` : "Hey,"} report bugs or request features here.
-          Try not to write “it broke” with zero details, unless you enjoy suffering.
+          {profile?.displayName ? `Hey ${profile.displayName},` : "Hey,"} submit a ticket if something’s broken or you want a feature.
+          Try giving actual details. The universe is allergic to “it doesn’t work”.
         </p>
       </div>
 

@@ -17,14 +17,14 @@ export default function Admin() {
             <p className="font-semibold">Ticket System</p>
           </div>
           <p className="text-sm text-muted-foreground mt-2">
-            View, reply, and resolve support tickets from members.
+            View, reply, and resolve support tickets our from members 🤭😘
           </p>
         </Link>
 
         <div className="glass-card p-6 rounded-3xl opacity-70">
           <p className="font-semibold">More tools soon</p>
           <p className="text-sm text-muted-foreground mt-2">
-            Bans, moderation, announcements… we’ll add these later without breaking the app.
+            Bans, moderation... etc blah blah yk
           </p>
         </div>
       </motion.div>

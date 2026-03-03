@@ -39,7 +39,7 @@ export default function Support() {
       <div className="glass-card p-5 rounded-3xl">
         <p className="text-sm text-muted-foreground">
           {profile?.displayName ? `Hey ${profile.displayName},` : "Hey,"} submit a ticket if something’s broken or you want a feature.
-          Try giving actual details. The universe is allergic to “it doesn’t work”.
+          Try giving actual details. Ping @kenta.kakashi or @lemon_kavi in discord if you don't get a reply soon (you would mostly).
         </p>
       </div>
 

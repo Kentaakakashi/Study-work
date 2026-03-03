@@ -1,100 +1,73 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
-
+import Index from "./pages/Index";
+import NotFound from "./pages/NotFound";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import OwnerRoute from "@/components/OwnerRoute";
 import AppLayout from "@/components/layout/AppLayout";
-import BackgroundBlobs from "@/components/layout/BackgroundBlobs";
 
-import Landing from "./pages/Landing";
-import Onboarding from "./pages/Onboarding";
+// Pages
 import Home from "./pages/Home";
-import Pomodoro from "./pages/Pomodoro";
-import Stopwatch from "./pages/Stopwatch";
+import Focus from "./pages/Focus";
 import Planner from "./pages/Planner";
 import Community from "./pages/Community";
 import Friends from "./pages/Friends";
 import Stats from "./pages/Stats";
-import AITutor from "./pages/AITutor";
-import Settings from "./pages/Settings";
-import NotFound from "./pages/NotFound";
-import PostThread from "./pages/PostThread";
-import Notifications from "./pages/Notifications";
-import Badges from "./pages/Badges";
 import Leaderboard from "./pages/Leaderboard";
-
+import Badges from "./pages/Badges";
+import Notifications from "./pages/Notifications";
+import AI from "./pages/AI";
+import Settings from "./pages/Settings";
 import Support from "./pages/Support";
 import SupportNew from "./pages/SupportNew";
-import SupportTicket from "./pages/SupportTicket";
-
+import SupportTicketPage from "./pages/SupportTicketPage";
 import Admin from "./pages/Admin";
 import AdminTickets from "./pages/AdminTickets";
-import AdminTicket from "./pages/AdminTicket";
 
-import ProtectedRoute from "@/components/ProtectedRoute";
-import BootGate from "@/components/BootGate";
-import OwnerRoute from "@/components/OwnerRoute";
+// ✅ The verification gate
+import EmailVerificationGate from "@/components/EmailVerificationGate";
 
-const queryClient = new QueryClient();
-
-const App = () => (
-  <QueryClientProvider client={queryClient}>
+export default function App() {
+  return (
     <TooltipProvider>
       <Toaster />
       <Sonner />
 
+      {/* 🚫 Blocks unverified email/password users */}
+      <EmailVerificationGate />
+
       <Routes>
         {/* Public */}
-        <Route
-          path="/"
-          element={
-            <>
-              <BackgroundBlobs />
-              <Landing />
-            </>
-          }
-        />
-        <Route
-          path="/onboarding"
-          element={
-            <>
-              <BackgroundBlobs />
-              <Onboarding />
-            </>
-          }
-        />
+        <Route path="/" element={<Index />} />
 
         {/* Protected */}
         <Route
           element={
             <ProtectedRoute>
-              <BootGate>
-                <AppLayout />
-              </BootGate>
+              <AppLayout />
             </ProtectedRoute>
           }
         >
           <Route path="/home" element={<Home />} />
-          <Route path="/focus/pomodoro" element={<Pomodoro />} />
-          <Route path="/focus/stopwatch" element={<Stopwatch />} />
+          <Route path="/focus/*" element={<Focus />} />
           <Route path="/planner" element={<Planner />} />
-          <Route path="/community" element={<Community />} />
-          <Route path="/community/:postId" element={<PostThread />} />
+          <Route path="/community/*" element={<Community />} />
           <Route path="/friends" element={<Friends />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/badges" element={<Badges />} />
           <Route path="/notifications" element={<Notifications />} />
-          <Route path="/ai" element={<AITutor />} />
+          <Route path="/ai" element={<AI />} />
           <Route path="/settings" element={<Settings />} />
 
-          {/* Support (for everyone logged in) */}
+          {/* Support */}
           <Route path="/support" element={<Support />} />
           <Route path="/support/new" element={<SupportNew />} />
-          <Route path="/support/:ticketId" element={<SupportTicket />} />
+          <Route path="/support/:ticketId" element={<SupportTicketPage />} />
 
-          {/* Admin (owners only) */}
+          {/* Owner-only */}
           <Route
             path="/admin"
             element={
@@ -111,21 +84,11 @@ const App = () => (
               </OwnerRoute>
             }
           />
-          <Route
-            path="/admin/tickets/:ticketId"
-            element={
-              <OwnerRoute>
-                <AdminTicket />
-              </OwnerRoute>
-            }
-          />
         </Route>
 
-        {/* 404 */}
+        {/* Fallback */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </TooltipProvider>
-  </QueryClientProvider>
-);
-
-export default App;
+  );
+}

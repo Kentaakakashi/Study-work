@@ -11,6 +11,7 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { isOwnerUid, roleForUid, type UserRole } from "@/lib/roles";
 
 type ProfileDoc = {
   uid: string;
@@ -22,6 +23,9 @@ type ProfileDoc = {
   createdAt?: any;
   updatedAt?: any;
   pfp?: string;
+
+  // ✅ NEW
+  role?: UserRole; // "owner" | "member"
 };
 
 type AuthContextValue = {
@@ -44,6 +48,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 /**
  * ✅ Ensures profiles/{uid} exists.
  * IMPORTANT: never overwrite username / onboardingComplete for existing users.
+ * ✅ Also: assigns owner role if uid is in OWNER_UIDS.
  */
 async function upsertProfile(u: User) {
   const ref = doc(db, "profiles", u.uid);
@@ -57,19 +62,24 @@ async function upsertProfile(u: User) {
     updatedAt: serverTimestamp(),
   };
 
+  // If user is an owner, we enforce role=owner (never downgrade).
+  const ownerPatch = isOwnerUid(u.uid) ? { role: "owner" as const } : {};
+
   if (!snap.exists()) {
     await setDoc(
       ref,
       {
         ...base,
         createdAt: serverTimestamp(),
-        onboardingComplete: false, // only for brand new users
+        onboardingComplete: false,
+        role: roleForUid(u.uid), // "owner" if in list else "member"
       },
       { merge: true }
     );
   } else {
-    // Existing user: DO NOT wipe username/onboardingComplete
-    await setDoc(ref, base, { merge: true });
+    // Existing user: DO NOT wipe username/onboardingComplete/role
+    // Only set role if they're in owner list (upgrade-only behavior).
+    await setDoc(ref, { ...base, ...ownerPatch }, { merge: true });
   }
 }
 
@@ -82,8 +92,8 @@ async function fetchProfile(uid: string) {
  * ✅ Ensures stats/{uid} exists for leaderboard.
  * IMPORTANT:
  * - never resets xp/minutes/streak
- * - never forces username:null every login
  * - if profile has username and stats doesn't, we mirror it once.
+ * ✅ Also mirrors role to stats (for Owner badge on leaderboard).
  */
 async function ensureStats(u: User, profile: ProfileDoc | null) {
   const ref = doc(db, "stats", u.uid);
@@ -93,15 +103,17 @@ async function ensureStats(u: User, profile: ProfileDoc | null) {
   const photoURL = (profile?.pfp || profile?.photoURL || u.photoURL || "") as string;
   const username = profile?.username || null;
 
+  const role: UserRole = (profile?.role as UserRole) || roleForUid(u.uid);
+
   if (!snap.exists()) {
-    // Create ONCE
     await setDoc(
       ref,
       {
         uid: u.uid,
         displayName,
         photoURL,
-        username, // may be null if onboarding not finished yet
+        username,
+        role, // ✅ NEW
 
         xp: 0,
         totalMinutes: 0,
@@ -118,7 +130,6 @@ async function ensureStats(u: User, profile: ProfileDoc | null) {
     return;
   }
 
-  // Existing stats: update only safe display fields.
   const existing = snap.data() as any;
 
   const patch: any = {
@@ -127,9 +138,16 @@ async function ensureStats(u: User, profile: ProfileDoc | null) {
     updatedAt: serverTimestamp(),
   };
 
-  // If stats.username missing but profile.username exists, mirror it once
   if ((!existing?.username || existing?.username === null) && username) {
     patch.username = username;
+  }
+
+  // Only upgrade role to owner, never downgrade.
+  if (role === "owner" && existing?.role !== "owner") {
+    patch.role = "owner";
+  } else if (!existing?.role) {
+    // If missing role entirely, set it once.
+    patch.role = role;
   }
 
   await setDoc(ref, patch, { merge: true });

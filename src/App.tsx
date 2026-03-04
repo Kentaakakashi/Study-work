@@ -1,94 +1,168 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
-import ProtectedRoute from "@/components/ProtectedRoute";
-import OwnerRoute from "@/components/OwnerRoute";
-import AppLayout from "@/components/layout/AppLayout";
-
-// Pages
-import Home from "./pages/Home";
-import Focus from "./pages/Focus";
-import Planner from "./pages/Planner";
-import Community from "./pages/Community";
-import Friends from "./pages/Friends";
-import Stats from "./pages/Stats";
-import Leaderboard from "./pages/Leaderboard";
-import Badges from "./pages/Badges";
-import Notifications from "./pages/Notifications";
-import AI from "./pages/AI";
-import Settings from "./pages/Settings";
-import Support from "./pages/Support";
-import SupportNew from "./pages/SupportNew";
-import SupportTicketPage from "./pages/SupportTicketPage";
-import Admin from "./pages/Admin";
-import AdminTickets from "./pages/AdminTickets";
-
-// ✅ The verification gate
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useAuth } from "@/lib/auth";
 import EmailVerificationGate from "@/components/EmailVerificationGate";
 
-export default function App() {
-  return (
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
+// Pages
+import Login from "@/pages/Login";
+import Onboarding from "@/pages/Onboarding";
+import Home from "@/pages/Home";
+import Profile from "@/pages/Profile";
+import Leaderboard from "@/pages/Leaderboard";
+import Focus from "@/pages/Focus";
+import AI from "@/pages/AI";
+import SupportTicketPage from "@/pages/SupportTicketPage";
+import Admin from "@/pages/Admin";
 
-      {/* 🚫 Blocks unverified email/password users */}
+function RequireAuth({ children }: { children: JSX.Element }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // While Firebase is figuring out who you are
+  if (loading) return <div className="min-h-screen bg-background" />;
+
+  // Not logged in → go login
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  return children;
+}
+
+function PublicOnly({ children }: { children: JSX.Element }) {
+  const { user, loading, needsOnboarding } = useAuth();
+
+  if (loading) return <div className="min-h-screen bg-background" />;
+
+  // Logged in users should NOT see login/signup pages
+  if (user) {
+    if (needsOnboarding) return <Navigate to="/onboarding" replace />;
+    return <Navigate to="/home" replace />;
+  }
+
+  return children;
+}
+
+export default function App() {
+  const { user, loading, needsOnboarding } = useAuth();
+
+  // Prevent weird flashes
+  if (loading) return <div className="min-h-screen bg-background" />;
+
+  return (
+    <>
+      {/* Blocks only email/password unverified users */}
       <EmailVerificationGate />
 
       <Routes>
-        {/* Public */}
-        <Route path="/" element={<Index />} />
-
-        {/* Protected */}
+        {/* Public routes */}
         <Route
+          path="/login"
           element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
+            <PublicOnly>
+              <Login />
+            </PublicOnly>
           }
-        >
-          <Route path="/home" element={<Home />} />
-          <Route path="/focus/*" element={<Focus />} />
-          <Route path="/planner" element={<Planner />} />
-          <Route path="/community/*" element={<Community />} />
-          <Route path="/friends" element={<Friends />} />
-          <Route path="/stats" element={<Stats />} />
-          <Route path="/leaderboard" element={<Leaderboard />} />
-          <Route path="/badges" element={<Badges />} />
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/ai" element={<AI />} />
-          <Route path="/settings" element={<Settings />} />
+        />
 
-          {/* Support */}
-          <Route path="/support" element={<Support />} />
-          <Route path="/support/new" element={<SupportNew />} />
-          <Route path="/support/:ticketId" element={<SupportTicketPage />} />
+        {/* If your app has a signup page separate, add it here too */}
+        {/* <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} /> */}
 
-          {/* Owner-only */}
-          <Route
-            path="/admin"
-            element={
-              <OwnerRoute>
-                <Admin />
-              </OwnerRoute>
-            }
-          />
-          <Route
-            path="/admin/tickets"
-            element={
-              <OwnerRoute>
-                <AdminTickets />
-              </OwnerRoute>
-            }
-          />
-        </Route>
+        {/* Onboarding */}
+        <Route
+          path="/onboarding"
+          element={
+            <RequireAuth>
+              <Onboarding />
+            </RequireAuth>
+          }
+        />
 
-        {/* Fallback */}
-        <Route path="*" element={<NotFound />} />
+        {/* Protected routes */}
+        <Route
+          path="/home"
+          element={
+            <RequireAuth>
+              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />}
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <RequireAuth>
+              <Profile />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/leaderboard"
+          element={
+            <RequireAuth>
+              <Leaderboard />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/focus/*"
+          element={
+            <RequireAuth>
+              <Focus />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/ai"
+          element={
+            <RequireAuth>
+              <AI />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/support"
+          element={
+            <RequireAuth>
+              <SupportTicketPage />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/admin/*"
+          element={
+            <RequireAuth>
+              <Admin />
+            </RequireAuth>
+          }
+        />
+
+        {/* Root route behavior */}
+        <Route
+          path="/"
+          element={
+            user ? (
+              needsOnboarding ? (
+                <Navigate to="/onboarding" replace />
+              ) : (
+                <Navigate to="/home" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* Catch-all */}
+        <Route
+          path="*"
+          element={<Navigate to={user ? "/home" : "/login"} replace />}
+        />
       </Routes>
-    </TooltipProvider>
+    </>
   );
 }

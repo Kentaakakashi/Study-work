@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import EmailVerificationGate from "@/components/EmailVerificationGate";
+import BootGate from "@/components/BootGate";
 
 // Layout
 import AppLayout from "@/components/layout/AppLayout";
@@ -96,15 +97,16 @@ export default function App() {
         <Route
           element={
             <RequireAuth>
-              <AppLayout />
+              {/* ✅ Boot happens BEFORE entering the app shell */}
+              <BootGate>
+                <AppLayout />
+              </BootGate>
             </RequireAuth>
           }
         >
           <Route
             path="/home"
-            element={
-              needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />
-            }
+            element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />}
           />
 
           <Route path="/planner" element={<Planner />} />

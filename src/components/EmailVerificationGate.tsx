@@ -4,9 +4,27 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { sendWelcomeEmailOnce } from "@/lib/welcomeEmail";
 
+const CONTINUE_URL = "https://study-zen.netlify.app/home";
+const AUTO_SEND_KEY = "studyzen_verification_autosent_v1";
+
+function friendlyAuthError(e: any) {
+  const code = e?.code || "";
+  if (code === "auth/unauthorized-continue-uri") {
+    return `Firebase blocked the link. Add "study-zen.netlify.app" to Firebase Auth → Settings → Authorized domains.`;
+  }
+  if (code === "auth/too-many-requests") {
+    return "Too many attempts. Wait a bit, then try again.";
+  }
+  if (code === "auth/network-request-failed") {
+    return "Network issue. Try again on stable internet (Wi-Fi if possible).";
+  }
+  return e?.message || "Couldn’t send verification email";
+}
+
 export default function EmailVerificationGate() {
   const { user, logout } = useAuth();
   const [checking, setChecking] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const providerIds = useMemo(() => {
     return (user?.providerData || [])
@@ -14,39 +32,25 @@ export default function EmailVerificationGate() {
       .filter(Boolean);
   }, [user]);
 
-  const isPasswordUser = useMemo(
-    () => providerIds.includes("password"),
-    [providerIds]
-  );
+  const isPasswordUser = useMemo(() => providerIds.includes("password"), [providerIds]);
+  const isGoogleUser = useMemo(() => providerIds.includes("google.com"), [providerIds]);
 
-  const isGoogleUser = useMemo(
-    () => providerIds.includes("google.com"),
-    [providerIds]
-  );
-
-  /**
-   * ✅ Only block if:
-   * - user has password provider
-   * - user does NOT have google provider (prevents linked-account false blocks)
-   * - email is not verified
-   */
+  // Block ONLY email/password users who aren't verified (ignore google sign-in)
   const needsVerification = useMemo(() => {
     if (!user) return false;
     return isPasswordUser && !isGoogleUser && !user.emailVerified;
   }, [user, isPasswordUser, isGoogleUser]);
 
+  // Send welcome email once after verification (or for Google users)
   useEffect(() => {
-    // If user is verified now, send welcome email once (safe/no duplicates)
     const run = async () => {
       if (!user) return;
 
-      // Google users should never be blocked here
       if (isGoogleUser) {
         await sendWelcomeEmailOnce();
         return;
       }
 
-      // Password users: if verified, send welcome once
       if (!needsVerification && user.emailVerified) {
         await sendWelcomeEmailOnce();
       }
@@ -56,30 +60,45 @@ export default function EmailVerificationGate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.emailVerified, needsVerification, isGoogleUser]);
 
-  const resend = async () => {
+  const doSendVerification = async () => {
     if (!user) return;
+    setSending(true);
     try {
       await sendEmailVerification(user, {
-        url: "https://study-zen.netlify.app/home",
+        url: CONTINUE_URL,
         handleCodeInApp: false,
       });
-      toast("Verification email sent ✅ Check your inbox/spam.");
+      toast("Verification email sent ✅ Check inbox + spam.");
     } catch (e: any) {
       console.error(e);
-      toast(e?.message || "Couldn’t send verification email");
+      toast(friendlyAuthError(e));
+    } finally {
+      setSending(false);
     }
   };
+
+  // ✅ Auto-send once per session when the gate first appears
+  useEffect(() => {
+    if (!needsVerification || !user) return;
+
+    const already = sessionStorage.getItem(AUTO_SEND_KEY);
+    if (already === "1") return;
+
+    sessionStorage.setItem(AUTO_SEND_KEY, "1");
+    doSendVerification();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsVerification, user?.uid]);
 
   const iVerified = async () => {
     if (!user) return;
     setChecking(true);
     try {
-      await user.reload(); // refresh emailVerified from Firebase
+      await user.reload();
       if (user.emailVerified) {
         toast("Verified ✅ Welcome in.");
         await sendWelcomeEmailOnce();
       } else {
-        toast("Still not verified. Check the email and click the link.");
+        toast("Still not verified. Click the link in the email first.");
       }
     } catch (e: any) {
       console.error(e);
@@ -89,27 +108,27 @@ export default function EmailVerificationGate() {
     }
   };
 
-  // ✅ If it doesn't need verification, do nothing
   if (!needsVerification) return null;
 
-  // 🚫 Unclosable overlay
   return (
     <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
       <div className="w-full max-w-lg rounded-3xl border border-border/40 bg-background/90 shadow-2xl p-6">
         <h2 className="text-xl font-bold">Verify your email</h2>
+
         <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
           You’re logged in, but you can’t use Study Zen until you verify your email.
           We sent a verification link to{" "}
-          <span className="font-semibold">{user?.email}</span>. Check spam too.
-          Email providers love drama.
+          <span className="font-semibold">{user?.email}</span>.
+          Check spam too. Email providers love drama.
         </p>
 
         <div className="mt-5 flex flex-col gap-3">
           <button
-            onClick={resend}
-            className="w-full glow-button py-3 rounded-2xl font-semibold"
+            onClick={doSendVerification}
+            disabled={sending}
+            className="w-full glow-button py-3 rounded-2xl font-semibold disabled:opacity-60"
           >
-            Resend verification email
+            {sending ? "Sending..." : "Resend verification email"}
           </button>
 
           <button
@@ -126,6 +145,11 @@ export default function EmailVerificationGate() {
           >
             Logout
           </button>
+        </div>
+
+        <div className="mt-4 text-xs text-muted-foreground">
+          If email still doesn’t arrive: Firebase Auth → Settings → Authorized domains → add{" "}
+          <span className="font-semibold">study-zen.netlify.app</span>.
         </div>
       </div>
     </div>

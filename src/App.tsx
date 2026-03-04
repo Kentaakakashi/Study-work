@@ -7,10 +7,11 @@ import BootGate from "@/components/BootGate";
 import AppLayout from "@/components/layout/AppLayout";
 import OwnerRoute from "@/components/OwnerRoute";
 
-// Pages
+// Pages (public + onboarding)
 import Landing from "@/pages/Landing";
 import Onboarding from "@/pages/Onboarding";
-import AdminUserRemoval from "@/pages/AdminUserRemoval";
+
+// Pages (main)
 import Home from "@/pages/Home";
 import Planner from "@/pages/Planner";
 import Community from "@/pages/Community";
@@ -33,6 +34,7 @@ import SupportTicketPage from "@/pages/SupportTicketPage";
 import Admin from "@/pages/Admin";
 import AdminTickets from "@/pages/AdminTickets";
 import AdminTicket from "@/pages/AdminTicket";
+import AdminUserRemoval from "@/pages/AdminUserRemoval";
 
 import NotFound from "@/pages/NotFound";
 
@@ -83,7 +85,7 @@ export default function App() {
           }
         />
 
-        {/* Onboarding (no sidebar / topbar) */}
+        {/* Onboarding (no app shell) */}
         <Route
           path="/onboarding"
           element={
@@ -93,22 +95,21 @@ export default function App() {
           }
         />
 
-        {/* Protected shell (Topbar + Sidebar + MobileNav) */}
+        {/* Protected app shell */}
         <Route
           element={
             <RequireAuth>
-              {/* ✅ Boot happens BEFORE entering the app shell */}
               <BootGate>
                 <AppLayout />
               </BootGate>
             </RequireAuth>
           }
         >
+          {/* Main */}
           <Route
             path="/home"
             element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />}
           />
-
           <Route path="/planner" element={<Planner />} />
           <Route path="/community" element={<Community />} />
           <Route path="/friends" element={<Friends />} />
@@ -118,6 +119,7 @@ export default function App() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/settings" element={<Settings />} />
 
+          {/* Tools */}
           <Route path="/focus/*" element={<Focus />} />
           <Route path="/ai" element={<AI />} />
 
@@ -148,6 +150,14 @@ export default function App() {
             element={
               <OwnerRoute>
                 <AdminTicket />
+              </OwnerRoute>
+            }
+          />
+          <Route
+            path="/admin/user-removal"
+            element={
+              <OwnerRoute>
+                <AdminUserRemoval />
               </OwnerRoute>
             }
           />

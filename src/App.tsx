@@ -2,25 +2,40 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import EmailVerificationGate from "@/components/EmailVerificationGate";
 
-// Pages
-import Login from "@/pages/Login";
+// ✅ Your actual pages that exist
+import Landing from "@/pages/Landing";
 import Onboarding from "@/pages/Onboarding";
 import Home from "@/pages/Home";
-import Profile from "@/pages/Profile";
+import Planner from "@/pages/Planner";
+import Community from "@/pages/Community";
+import Friends from "@/pages/Friends";
+import Stats from "@/pages/Stats";
 import Leaderboard from "@/pages/Leaderboard";
+import Badges from "@/pages/Badges";
+import Notifications from "@/pages/Notifications";
+import Settings from "@/pages/Settings";
+
 import Focus from "@/pages/Focus";
 import AI from "@/pages/AI";
+
+// Support pages
+import Support from "@/pages/Support";
+import SupportNew from "@/pages/SupportNew";
 import SupportTicketPage from "@/pages/SupportTicketPage";
+
+// Admin pages
 import Admin from "@/pages/Admin";
+import AdminTickets from "@/pages/AdminTickets";
+import AdminTicket from "@/pages/AdminTicket";
+
+import NotFound from "@/pages/NotFound";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // While Firebase is figuring out who you are
   if (loading) return <div className="min-h-screen bg-background" />;
 
-  // Not logged in → go login
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
@@ -33,7 +48,6 @@ function PublicOnly({ children }: { children: JSX.Element }) {
 
   if (loading) return <div className="min-h-screen bg-background" />;
 
-  // Logged in users should NOT see login/signup pages
   if (user) {
     if (needsOnboarding) return <Navigate to="/onboarding" replace />;
     return <Navigate to="/home" replace />;
@@ -45,29 +59,25 @@ function PublicOnly({ children }: { children: JSX.Element }) {
 export default function App() {
   const { user, loading, needsOnboarding } = useAuth();
 
-  // Prevent weird flashes
   if (loading) return <div className="min-h-screen bg-background" />;
 
   return (
     <>
-      {/* Blocks only email/password unverified users */}
+      {/* ✅ Blocks only email/password unverified users */}
       <EmailVerificationGate />
 
       <Routes>
-        {/* Public routes */}
+        {/* ✅ Public */}
         <Route
           path="/login"
           element={
             <PublicOnly>
-              <Login />
+              <Landing />
             </PublicOnly>
           }
         />
 
-        {/* If your app has a signup page separate, add it here too */}
-        {/* <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} /> */}
-
-        {/* Onboarding */}
+        {/* ✅ Onboarding */}
         <Route
           path="/onboarding"
           element={
@@ -77,7 +87,7 @@ export default function App() {
           }
         />
 
-        {/* Protected routes */}
+        {/* ✅ Main protected routes (matches your sidebar) */}
         <Route
           path="/home"
           element={
@@ -88,10 +98,37 @@ export default function App() {
         />
 
         <Route
-          path="/profile"
+          path="/planner"
           element={
             <RequireAuth>
-              <Profile />
+              <Planner />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/community"
+          element={
+            <RequireAuth>
+              <Community />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/friends"
+          element={
+            <RequireAuth>
+              <Friends />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/stats"
+          element={
+            <RequireAuth>
+              <Stats />
             </RequireAuth>
           }
         />
@@ -101,6 +138,33 @@ export default function App() {
           element={
             <RequireAuth>
               <Leaderboard />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/badges"
+          element={
+            <RequireAuth>
+              <Badges />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/notifications"
+          element={
+            <RequireAuth>
+              <Notifications />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/settings"
+          element={
+            <RequireAuth>
+              <Settings />
             </RequireAuth>
           }
         />
@@ -123,8 +187,25 @@ export default function App() {
           }
         />
 
+        {/* ✅ Support */}
         <Route
           path="/support"
+          element={
+            <RequireAuth>
+              <Support />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/support/new"
+          element={
+            <RequireAuth>
+              <SupportNew />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/support/:ticketId"
           element={
             <RequireAuth>
               <SupportTicketPage />
@@ -132,16 +213,33 @@ export default function App() {
           }
         />
 
+        {/* ✅ Admin */}
         <Route
-          path="/admin/*"
+          path="/admin"
           element={
             <RequireAuth>
               <Admin />
             </RequireAuth>
           }
         />
+        <Route
+          path="/admin/tickets"
+          element={
+            <RequireAuth>
+              <AdminTickets />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/tickets/:ticketId"
+          element={
+            <RequireAuth>
+              <AdminTicket />
+            </RequireAuth>
+          }
+        />
 
-        {/* Root route behavior */}
+        {/* ✅ Root behavior */}
         <Route
           path="/"
           element={
@@ -157,11 +255,9 @@ export default function App() {
           }
         />
 
-        {/* Catch-all */}
-        <Route
-          path="*"
-          element={<Navigate to={user ? "/home" : "/login"} replace />}
-        />
+        {/* ✅ Not found */}
+        <Route path="/404" element={<NotFound />} />
+        <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
     </>
   );

@@ -8,28 +8,53 @@ export default function EmailVerificationGate() {
   const { user, logout } = useAuth();
   const [checking, setChecking] = useState(false);
 
+  const providerIds = useMemo(() => {
+    return (user?.providerData || [])
+      .map((p) => p.providerId)
+      .filter(Boolean);
+  }, [user]);
+
+  const isPasswordUser = useMemo(
+    () => providerIds.includes("password"),
+    [providerIds]
+  );
+
+  const isGoogleUser = useMemo(
+    () => providerIds.includes("google.com"),
+    [providerIds]
+  );
+
+  /**
+   * ✅ Only block if:
+   * - user has password provider
+   * - user does NOT have google provider (prevents linked-account false blocks)
+   * - email is not verified
+   */
   const needsVerification = useMemo(() => {
     if (!user) return false;
-
-    const isPasswordProvider = user.providerData?.some(
-      (p) => p.providerId === "password"
-    );
-
-    // Only block email/password users, never Google users
-    return isPasswordProvider && !user.emailVerified;
-  }, [user]);
+    return isPasswordUser && !isGoogleUser && !user.emailVerified;
+  }, [user, isPasswordUser, isGoogleUser]);
 
   useEffect(() => {
     // If user is verified now, send welcome email once (safe/no duplicates)
     const run = async () => {
       if (!user) return;
+
+      // Google users should never be blocked here
+      if (isGoogleUser) {
+        await sendWelcomeEmailOnce();
+        return;
+      }
+
+      // Password users: if verified, send welcome once
       if (!needsVerification && user.emailVerified) {
         await sendWelcomeEmailOnce();
       }
     };
+
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsVerification, user?.uid, user?.emailVerified]);
+  }, [user?.uid, user?.emailVerified, needsVerification, isGoogleUser]);
 
   const resend = async () => {
     if (!user) return;
@@ -64,6 +89,7 @@ export default function EmailVerificationGate() {
     }
   };
 
+  // ✅ If it doesn't need verification, do nothing
   if (!needsVerification) return null;
 
   // 🚫 Unclosable overlay

@@ -2,9 +2,14 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import EmailVerificationGate from "@/components/EmailVerificationGate";
 
-// ✅ Your actual pages that exist
+// Layout
+import AppLayout from "@/components/layout/AppLayout";
+import OwnerRoute from "@/components/OwnerRoute";
+
+// Pages
 import Landing from "@/pages/Landing";
 import Onboarding from "@/pages/Onboarding";
+
 import Home from "@/pages/Home";
 import Planner from "@/pages/Planner";
 import Community from "@/pages/Community";
@@ -18,12 +23,12 @@ import Settings from "@/pages/Settings";
 import Focus from "@/pages/Focus";
 import AI from "@/pages/AI";
 
-// Support pages
+// Support
 import Support from "@/pages/Support";
 import SupportNew from "@/pages/SupportNew";
 import SupportTicketPage from "@/pages/SupportTicketPage";
 
-// Admin pages
+// Admin
 import Admin from "@/pages/Admin";
 import AdminTickets from "@/pages/AdminTickets";
 import AdminTicket from "@/pages/AdminTicket";
@@ -63,11 +68,11 @@ export default function App() {
 
   return (
     <>
-      {/* ✅ Blocks only email/password unverified users */}
+      {/* Blocks only email/password unverified users */}
       <EmailVerificationGate />
 
       <Routes>
-        {/* ✅ Public */}
+        {/* Public */}
         <Route
           path="/login"
           element={
@@ -77,7 +82,7 @@ export default function App() {
           }
         />
 
-        {/* ✅ Onboarding */}
+        {/* Onboarding (no sidebar / topbar) */}
         <Route
           path="/onboarding"
           element={
@@ -87,159 +92,66 @@ export default function App() {
           }
         />
 
-        {/* ✅ Main protected routes (matches your sidebar) */}
+        {/* Protected shell (Topbar + Sidebar + MobileNav) */}
         <Route
-          path="/home"
           element={
             <RequireAuth>
-              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />}
+              <AppLayout />
             </RequireAuth>
           }
-        />
+        >
+          <Route
+            path="/home"
+            element={
+              needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />
+            }
+          />
 
-        <Route
-          path="/planner"
-          element={
-            <RequireAuth>
-              <Planner />
-            </RequireAuth>
-          }
-        />
+          <Route path="/planner" element={<Planner />} />
+          <Route path="/community" element={<Community />} />
+          <Route path="/friends" element={<Friends />} />
+          <Route path="/stats" element={<Stats />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/badges" element={<Badges />} />
+          <Route path="/notifications" element={<Notifications />} />
+          <Route path="/settings" element={<Settings />} />
 
-        <Route
-          path="/community"
-          element={
-            <RequireAuth>
-              <Community />
-            </RequireAuth>
-          }
-        />
+          <Route path="/focus/*" element={<Focus />} />
+          <Route path="/ai" element={<AI />} />
 
-        <Route
-          path="/friends"
-          element={
-            <RequireAuth>
-              <Friends />
-            </RequireAuth>
-          }
-        />
+          {/* Support */}
+          <Route path="/support" element={<Support />} />
+          <Route path="/support/new" element={<SupportNew />} />
+          <Route path="/support/:ticketId" element={<SupportTicketPage />} />
 
-        <Route
-          path="/stats"
-          element={
-            <RequireAuth>
-              <Stats />
-            </RequireAuth>
-          }
-        />
+          {/* Admin (owner only) */}
+          <Route
+            path="/admin"
+            element={
+              <OwnerRoute>
+                <Admin />
+              </OwnerRoute>
+            }
+          />
+          <Route
+            path="/admin/tickets"
+            element={
+              <OwnerRoute>
+                <AdminTickets />
+              </OwnerRoute>
+            }
+          />
+          <Route
+            path="/admin/tickets/:ticketId"
+            element={
+              <OwnerRoute>
+                <AdminTicket />
+              </OwnerRoute>
+            }
+          />
+        </Route>
 
-        <Route
-          path="/leaderboard"
-          element={
-            <RequireAuth>
-              <Leaderboard />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/badges"
-          element={
-            <RequireAuth>
-              <Badges />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/notifications"
-          element={
-            <RequireAuth>
-              <Notifications />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/settings"
-          element={
-            <RequireAuth>
-              <Settings />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/focus/*"
-          element={
-            <RequireAuth>
-              <Focus />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/ai"
-          element={
-            <RequireAuth>
-              <AI />
-            </RequireAuth>
-          }
-        />
-
-        {/* ✅ Support */}
-        <Route
-          path="/support"
-          element={
-            <RequireAuth>
-              <Support />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/support/new"
-          element={
-            <RequireAuth>
-              <SupportNew />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/support/:ticketId"
-          element={
-            <RequireAuth>
-              <SupportTicketPage />
-            </RequireAuth>
-          }
-        />
-
-        {/* ✅ Admin */}
-        <Route
-          path="/admin"
-          element={
-            <RequireAuth>
-              <Admin />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/admin/tickets"
-          element={
-            <RequireAuth>
-              <AdminTickets />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/admin/tickets/:ticketId"
-          element={
-            <RequireAuth>
-              <AdminTicket />
-            </RequireAuth>
-          }
-        />
-
-        {/* ✅ Root behavior */}
+        {/* Root */}
         <Route
           path="/"
           element={
@@ -255,7 +167,7 @@ export default function App() {
           }
         />
 
-        {/* ✅ Not found */}
+        {/* Not found */}
         <Route path="/404" element={<NotFound />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>

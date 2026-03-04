@@ -1,168 +1,133 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { sendEmailVerification } from "firebase/auth";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
-import EmailVerificationGate from "@/components/EmailVerificationGate";
+import { sendWelcomeEmailOnce } from "@/lib/welcomeEmail";
 
-// Pages
-import Login from "@/pages/Login";
-import Onboarding from "@/pages/Onboarding";
-import Home from "@/pages/Home";
-import Profile from "@/pages/Profile";
-import Leaderboard from "@/pages/Leaderboard";
-import Focus from "@/pages/Focus";
-import AI from "@/pages/AI";
-import SupportTicketPage from "@/pages/SupportTicketPage";
-import Admin from "@/pages/Admin";
+export default function EmailVerificationGate() {
+  const { user, logout } = useAuth();
+  const [checking, setChecking] = useState(false);
 
-function RequireAuth({ children }: { children: JSX.Element }) {
-  const { user, loading } = useAuth();
-  const location = useLocation();
+  const providerIds = useMemo(() => {
+    return (user?.providerData || [])
+      .map((p) => p.providerId)
+      .filter(Boolean);
+  }, [user]);
 
-  // While Firebase is figuring out who you are
-  if (loading) return <div className="min-h-screen bg-background" />;
+  const isPasswordUser = useMemo(
+    () => providerIds.includes("password"),
+    [providerIds]
+  );
 
-  // Not logged in → go login
-  if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
-  }
+  const isGoogleUser = useMemo(
+    () => providerIds.includes("google.com"),
+    [providerIds]
+  );
 
-  return children;
-}
+  /**
+   * ✅ Only block if:
+   * - user has password provider
+   * - user does NOT have google provider (prevents linked-account false blocks)
+   * - email is not verified
+   */
+  const needsVerification = useMemo(() => {
+    if (!user) return false;
+    return isPasswordUser && !isGoogleUser && !user.emailVerified;
+  }, [user, isPasswordUser, isGoogleUser]);
 
-function PublicOnly({ children }: { children: JSX.Element }) {
-  const { user, loading, needsOnboarding } = useAuth();
+  useEffect(() => {
+    // If user is verified now, send welcome email once (safe/no duplicates)
+    const run = async () => {
+      if (!user) return;
 
-  if (loading) return <div className="min-h-screen bg-background" />;
+      // Google users should never be blocked here
+      if (isGoogleUser) {
+        await sendWelcomeEmailOnce();
+        return;
+      }
 
-  // Logged in users should NOT see login/signup pages
-  if (user) {
-    if (needsOnboarding) return <Navigate to="/onboarding" replace />;
-    return <Navigate to="/home" replace />;
-  }
+      // Password users: if verified, send welcome once
+      if (!needsVerification && user.emailVerified) {
+        await sendWelcomeEmailOnce();
+      }
+    };
 
-  return children;
-}
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, user?.emailVerified, needsVerification, isGoogleUser]);
 
-export default function App() {
-  const { user, loading, needsOnboarding } = useAuth();
+  const resend = async () => {
+    if (!user) return;
+    try {
+      await sendEmailVerification(user, {
+        url: "https://study-zen.netlify.app/home",
+        handleCodeInApp: false,
+      });
+      toast("Verification email sent ✅ Check your inbox/spam.");
+    } catch (e: any) {
+      console.error(e);
+      toast(e?.message || "Couldn’t send verification email");
+    }
+  };
 
-  // Prevent weird flashes
-  if (loading) return <div className="min-h-screen bg-background" />;
+  const iVerified = async () => {
+    if (!user) return;
+    setChecking(true);
+    try {
+      await user.reload(); // refresh emailVerified from Firebase
+      if (user.emailVerified) {
+        toast("Verified ✅ Welcome in.");
+        await sendWelcomeEmailOnce();
+      } else {
+        toast("Still not verified. Check the email and click the link.");
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast(e?.message || "Couldn’t refresh verification status");
+    } finally {
+      setChecking(false);
+    }
+  };
 
+  // ✅ If it doesn't need verification, do nothing
+  if (!needsVerification) return null;
+
+  // 🚫 Unclosable overlay
   return (
-    <>
-      {/* Blocks only email/password unverified users */}
-      <EmailVerificationGate />
+    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="w-full max-w-lg rounded-3xl border border-border/40 bg-background/90 shadow-2xl p-6">
+        <h2 className="text-xl font-bold">Verify your email</h2>
+        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+          You’re logged in, but you can’t use Study Zen until you verify your email.
+          We sent a verification link to{" "}
+          <span className="font-semibold">{user?.email}</span>. Check spam too.
+          Email providers love drama.
+        </p>
 
-      <Routes>
-        {/* Public routes */}
-        <Route
-          path="/login"
-          element={
-            <PublicOnly>
-              <Login />
-            </PublicOnly>
-          }
-        />
+        <div className="mt-5 flex flex-col gap-3">
+          <button
+            onClick={resend}
+            className="w-full glow-button py-3 rounded-2xl font-semibold"
+          >
+            Resend verification email
+          </button>
 
-        {/* If your app has a signup page separate, add it here too */}
-        {/* <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} /> */}
+          <button
+            onClick={iVerified}
+            disabled={checking}
+            className="w-full bg-secondary/40 hover:bg-secondary/55 transition py-3 rounded-2xl font-semibold disabled:opacity-60"
+          >
+            {checking ? "Checking..." : "I verified, continue"}
+          </button>
 
-        {/* Onboarding */}
-        <Route
-          path="/onboarding"
-          element={
-            <RequireAuth>
-              <Onboarding />
-            </RequireAuth>
-          }
-        />
-
-        {/* Protected routes */}
-        <Route
-          path="/home"
-          element={
-            <RequireAuth>
-              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />}
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/profile"
-          element={
-            <RequireAuth>
-              <Profile />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/leaderboard"
-          element={
-            <RequireAuth>
-              <Leaderboard />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/focus/*"
-          element={
-            <RequireAuth>
-              <Focus />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/ai"
-          element={
-            <RequireAuth>
-              <AI />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/support"
-          element={
-            <RequireAuth>
-              <SupportTicketPage />
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/admin/*"
-          element={
-            <RequireAuth>
-              <Admin />
-            </RequireAuth>
-          }
-        />
-
-        {/* Root route behavior */}
-        <Route
-          path="/"
-          element={
-            user ? (
-              needsOnboarding ? (
-                <Navigate to="/onboarding" replace />
-              ) : (
-                <Navigate to="/home" replace />
-              )
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-
-        {/* Catch-all */}
-        <Route
-          path="*"
-          element={<Navigate to={user ? "/home" : "/login"} replace />}
-        />
-      </Routes>
-    </>
+          <button
+            onClick={logout}
+            className="w-full bg-destructive/20 hover:bg-destructive/30 transition py-3 rounded-2xl font-semibold text-destructive"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

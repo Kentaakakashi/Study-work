@@ -54,7 +54,7 @@ export default function AdminUserRemoval() {
         <div className="flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-yellow-400 mt-0.5" />
           <div className="text-sm text-muted-foreground">
-            This is a hard delete: we’ll wipe the user’s Firestore data and delete their Firebase Auth account.
+            This is a hard delete: it'll uhm wipe the user’s data from rntire database and delete their Firebase Auth account 😗🎀
             It will <span className="text-foreground font-semibold">refuse</span> to delete owners.
           </div>
         </div>

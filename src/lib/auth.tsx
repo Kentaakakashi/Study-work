@@ -12,6 +12,7 @@ import {
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { isOwnerUid, roleForUid, type UserRole } from "@/lib/roles";
+import { sendWelcomeEmailOnce } from "@/lib/welcomeEmail";
 
 type ProfileDoc = {
   uid: string;
@@ -146,17 +147,16 @@ async function ensureStats(u: User, profile: ProfileDoc | null) {
   if (role === "owner" && existing?.role !== "owner") {
     patch.role = "owner";
   } else if (!existing?.role) {
-    // If missing role entirely, set it once.
-    patch.role = role;
+    patch.role = role; // set default once if missing
   }
 
   await setDoc(ref, patch, { merge: true });
 }
 
-async function setPresence(uid: string, online: boolean, status: string = "online") {
+async function setPresence(uid: string, online: boolean, status: "online" | "idle") {
   await setDoc(
     doc(db, "presence", uid),
-    { online, status, lastSeen: serverTimestamp() },
+    { uid, online, status, updatedAt: serverTimestamp() },
     { merge: true }
   );
 }
@@ -164,10 +164,11 @@ async function setPresence(uid: string, online: boolean, status: string = "onlin
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [idToken, setIdToken] = useState<string | null>(null);
 
   const [profile, setProfile] = useState<ProfileDoc | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+
+  const [idToken, setIdToken] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -175,78 +176,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
 
       if (!u) {
-        setIdToken(null);
         setProfile(null);
         setProfileLoading(false);
+        setIdToken(null);
         return;
       }
 
+      setProfileLoading(true);
       try {
-        setProfileLoading(true);
-
-        // 1) Ensure profile exists (safe)
         await upsertProfile(u);
-
-        // 2) Fetch profile for onboarding logic
         const p = await fetchProfile(u.uid);
         setProfile(p);
-
-        // 3) Ensure stats exists for leaderboard (safe, NO resets)
         await ensureStats(u, p);
-
-        // 4) Token
-        const tok = await getIdToken(u);
-        setIdToken(tok);
-
-        // 5) Presence
-        await setPresence(u.uid, true, document.hidden ? "idle" : "online");
-      } catch {
-        // best effort
+        setIdToken(await getIdToken(u));
+        await setPresence(u.uid, true, "online").catch(() => {});
       } finally {
         setProfileLoading(false);
       }
     });
 
-    const vis = async () => {
-      const u = auth.currentUser;
-      if (!u) return;
-      try {
-        await setPresence(u.uid, true, document.hidden ? "idle" : "online");
-      } catch {}
-    };
-
-    document.addEventListener("visibilitychange", vis);
-
-    const onUnload = () => {
-      const u = auth.currentUser;
-      if (!u) return;
-      setPresence(u.uid, false, "idle").catch(() => {});
-    };
-    window.addEventListener("beforeunload", onUnload);
-
-    return () => {
-      document.removeEventListener("visibilitychange", vis);
-      window.removeEventListener("beforeunload", onUnload);
-      unsub();
-    };
+    return () => unsub();
   }, []);
 
-  const needsOnboarding =
-    !!user &&
-    !profileLoading &&
-    (!profile?.onboardingComplete || !profile?.username);
+  const needsOnboarding = useMemo(() => {
+    if (!user) return false;
+    if (profileLoading) return false;
+    return profile ? !profile.onboardingComplete : true;
+  }, [user, profile, profileLoading]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       loading,
+
       profile,
       profileLoading,
       needsOnboarding,
+
       idToken,
 
-      signUpEmail: async (email, password) => {
-        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      signUpEmail: async (email: string, password: string) => {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
         await upsertProfile(cred.user);
         const p = await fetchProfile(cred.user.uid);
         setProfile(p);
@@ -254,8 +224,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIdToken(await getIdToken(cred.user));
       },
 
-      signInEmail: async (email, password) => {
-        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      signInEmail: async (email: string, password: string) => {
+        const cred = await signInWithEmailAndPassword(auth, email, password);
         await upsertProfile(cred.user);
         const p = await fetchProfile(cred.user.uid);
         setProfile(p);
@@ -270,6 +240,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const p = await fetchProfile(cred.user.uid);
         setProfile(p);
         await ensureStats(cred.user, p);
+
+        // ✅ Google users: welcome email right away (sent once)
+        await sendWelcomeEmailOnce();
+
         setIdToken(await getIdToken(cred.user));
       },
 
@@ -287,6 +261,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }

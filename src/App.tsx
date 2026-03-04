@@ -10,7 +10,7 @@ import OwnerRoute from "@/components/OwnerRoute";
 // Pages
 import Landing from "@/pages/Landing";
 import Onboarding from "@/pages/Onboarding";
-
+import AdminUserRemoval from "@/pages/AdminUserRemoval";
 import Home from "@/pages/Home";
 import Planner from "@/pages/Planner";
 import Community from "@/pages/Community";

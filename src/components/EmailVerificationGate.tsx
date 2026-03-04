@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { sendEmailVerification } from "firebase/auth";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
-import { callWelcomeEmail } from "@/lib/welcomeEmail";
+import { sendWelcomeEmailOnce } from "@/lib/welcomeEmail";
 
 export default function EmailVerificationGate() {
   const { user, logout } = useAuth();
@@ -24,12 +24,7 @@ export default function EmailVerificationGate() {
     const run = async () => {
       if (!user) return;
       if (!needsVerification && user.emailVerified) {
-        await callWelcomeEmail({
-          uid: user.uid,
-          email: user.email || "",
-          displayName: user.displayName || "",
-          provider: user.providerData?.[0]?.providerId || "unknown",
-        });
+        await sendWelcomeEmailOnce();
       }
     };
     run();
@@ -57,12 +52,7 @@ export default function EmailVerificationGate() {
       await user.reload(); // refresh emailVerified from Firebase
       if (user.emailVerified) {
         toast("Verified ✅ Welcome in.");
-        await callWelcomeEmail({
-          uid: user.uid,
-          email: user.email || "",
-          displayName: user.displayName || "",
-          provider: "password",
-        });
+        await sendWelcomeEmailOnce();
       } else {
         toast("Still not verified. Check the email and click the link.");
       }
@@ -83,8 +73,9 @@ export default function EmailVerificationGate() {
         <h2 className="text-xl font-bold">Verify your email</h2>
         <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
           You’re logged in, but you can’t use Study Zen until you verify your email.
-          We sent a verification link to <span className="font-semibold">{user?.email}</span>.
-          Check spam too. Email providers love drama.
+          We sent a verification link to{" "}
+          <span className="font-semibold">{user?.email}</span>. Check spam too.
+          Email providers love drama.
         </p>
 
         <div className="mt-5 flex flex-col gap-3">

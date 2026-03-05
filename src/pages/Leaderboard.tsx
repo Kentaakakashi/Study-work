@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Trophy, CalendarDays, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 import { isOwnerUid } from "@/lib/roles";
@@ -40,7 +41,7 @@ function levelFromXp(xp: number) {
 
 export default function Leaderboard() {
   const { user, profile } = useAuth();
-  const isOwner = (profile?.role === "owner") || isOwnerUid(user?.uid);
+  const isOwner = profile?.role === "owner" || isOwnerUid(user?.uid);
 
   const [mode, setMode] = useState<"xp" | "weekly">("xp");
   const [rows, setRows] = useState<StatsDoc[]>([]);
@@ -52,7 +53,9 @@ export default function Leaderboard() {
     try {
       const snap = await getDoc(doc(db, "profiles", uid));
       setProfiles((prev) => ({ ...prev, [uid]: (snap.data() as ProfileDoc) || {} }));
-    } catch {}
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
@@ -89,7 +92,7 @@ export default function Leaderboard() {
     const uid = r.uid || "";
     const p = (uid && profiles[uid]) || {};
     const displayName = r.displayName || p.displayName || "User";
-    const username = r.username || p.username || "unknown";
+    const username = r.username || p.username || "";
     const photoURL = r.photoURL || r.pfp || p.photoURL || p.pfp || "";
     const avatar = photoURL || dice(username || displayName || uid);
     const role = (r.role || p.role || "member") as "owner" | "member";
@@ -111,7 +114,6 @@ export default function Leaderboard() {
       await navigator.clipboard.writeText(uid);
       toast(`Copied UID ✅ (${uid.slice(0, 6)}...)`);
     } catch {
-      // fallback (some browsers block clipboard)
       try {
         const el = document.createElement("textarea");
         el.value = uid;
@@ -170,6 +172,9 @@ export default function Leaderboard() {
               const m = metricText(r);
               const isYou = id.uid === youUid;
 
+              const canLink = !!id.username && id.username !== "unknown";
+              const profilePath = canLink ? `/u/${id.username}` : null;
+
               return (
                 <div
                   key={`${id.uid}_${mode}_${i}`}
@@ -183,24 +188,46 @@ export default function Leaderboard() {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 text-center">
-                      <span className="text-primary font-bold">#{i + 1}</span>
+                  {/* Left: clickable identity */}
+                  {profilePath ? (
+                    <Link to={profilePath} className="flex items-center gap-3 min-w-0 hover:opacity-95 transition">
+                      <div className="w-10 text-center">
+                        <span className="text-primary font-bold">#{i + 1}</span>
+                      </div>
+
+                      <img src={id.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="avatar" />
+
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate flex items-center">
+                          <span className="truncate">{id.displayName}</span>
+                          {id.role === "owner" && <OwnerBadge />}
+                        </p>
+
+                        <p className="text-xs text-muted-foreground truncate">
+                          {m.sub} • @{id.username}
+                        </p>
+                      </div>
+                    </Link>
+                  ) : (
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 text-center">
+                        <span className="text-primary font-bold">#{i + 1}</span>
+                      </div>
+
+                      <img src={id.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="avatar" />
+
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate flex items-center">
+                          <span className="truncate">{id.displayName}</span>
+                          {id.role === "owner" && <OwnerBadge />}
+                        </p>
+
+                        <p className="text-xs text-muted-foreground truncate">
+                          {m.sub} {id.username ? `• @${id.username}` : ""}
+                        </p>
+                      </div>
                     </div>
-
-                    <img src={id.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="avatar" />
-
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate flex items-center">
-                        <span className="truncate">{id.displayName}</span>
-                        {id.role === "owner" && <OwnerBadge />}
-                      </p>
-
-                      <p className="text-xs text-muted-foreground truncate">
-                        {m.sub} • @{id.username}
-                      </p>
-                    </div>
-                  </div>
+                  )}
 
                   <div className="flex items-center gap-3">
                     {/* Owner-only UID copy */}
@@ -228,4 +255,4 @@ export default function Leaderboard() {
       </motion.div>
     </div>
   );
-}
+                        }

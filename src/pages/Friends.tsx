@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { UserPlus, Users, MailCheck, MailX, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 import {
@@ -212,25 +213,45 @@ const Friends = () => {
     const p = profiles[uid] || {};
     const pres = presence[uid] || {};
     const disp = p.displayName || "User";
-    const uname = p.username ? `@${p.username}` : "@no-username";
+    const unameRaw = p.username || "";
+    const uname = unameRaw ? `@${unameRaw}` : "@no-username";
     const pfp = p.pfp || p.photoURL || dice(p.username || disp || uid);
     const status = !pres.online ? "offline" : pres.status || "online";
     const dot =
       !pres.online ? "bg-secondary/40" : pres.status === "studying" ? "bg-emerald-400/80" : "bg-primary/80";
 
+    const canLink = !!unameRaw;
+    const profilePath = canLink ? `/u/${unameRaw}` : null;
+
     return (
       <div className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-secondary/15 border border-border/40">
-        <div className="flex items-center gap-3 min-w-0">
-          <img src={pfp} className="w-10 h-10 rounded-xl object-cover" />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="font-semibold truncate">{disp}</p>
-              <span className={`w-2.5 h-2.5 rounded-full ${dot}`} title={status} />
-              <span className="text-xs text-muted-foreground">{status}</span>
+        {/* Left: clickable identity */}
+        {profilePath ? (
+          <Link to={profilePath} className="flex items-center gap-3 min-w-0 hover:opacity-95 transition">
+            <img src={pfp} className="w-10 h-10 rounded-xl object-cover" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="font-semibold truncate">{disp}</p>
+                <span className={`w-2.5 h-2.5 rounded-full ${dot}`} title={status} />
+                <span className="text-xs text-muted-foreground">{status}</span>
+              </div>
+              <p className="text-xs text-muted-foreground truncate">{uname}</p>
             </div>
-            <p className="text-xs text-muted-foreground truncate">{uname}</p>
+          </Link>
+        ) : (
+          <div className="flex items-center gap-3 min-w-0">
+            <img src={pfp} className="w-10 h-10 rounded-xl object-cover" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="font-semibold truncate">{disp}</p>
+                <span className={`w-2.5 h-2.5 rounded-full ${dot}`} title={status} />
+                <span className="text-xs text-muted-foreground">{status}</span>
+              </div>
+              <p className="text-xs text-muted-foreground truncate">{uname}</p>
+            </div>
           </div>
-        </div>
+        )}
+
         <div className="flex items-center gap-2">{right}</div>
       </div>
     );

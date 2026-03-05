@@ -25,6 +25,7 @@ export default function EmailVerificationGate() {
   const { user, logout } = useAuth();
   const [checking, setChecking] = useState(false);
   const [sending, setSending] = useState(false);
+  const [verifiedNow, setVerifiedNow] = useState<boolean>(!!user?.emailVerified);
 
   const providerIds = useMemo(() => {
     return (user?.providerData || [])
@@ -35,11 +36,18 @@ export default function EmailVerificationGate() {
   const isPasswordUser = useMemo(() => providerIds.includes("password"), [providerIds]);
   const isGoogleUser = useMemo(() => providerIds.includes("google.com"), [providerIds]);
 
+  // Keep local verified state in sync when auth user changes
+  useEffect(() => {
+    setVerifiedNow(!!user?.emailVerified);
+  }, [user?.uid, user?.emailVerified]);
+
   // Block ONLY email/password users who aren't verified (ignore google sign-in)
   const needsVerification = useMemo(() => {
     if (!user) return false;
-    return isPasswordUser && !isGoogleUser && !user.emailVerified;
-  }, [user, isPasswordUser, isGoogleUser]);
+    // NOTE: don't rely only on `user.emailVerified` because Firebase won't always
+    // refresh that field until we manually `reload()`.
+    return isPasswordUser && !isGoogleUser && !verifiedNow;
+  }, [user, isPasswordUser, isGoogleUser, verifiedNow]);
 
   // Send welcome email once after verification (or for Google users)
   useEffect(() => {
@@ -94,9 +102,23 @@ export default function EmailVerificationGate() {
     setChecking(true);
     try {
       await user.reload();
-      if (user.emailVerified) {
+      const isVerified = !!user.emailVerified;
+      setVerifiedNow(isVerified);
+
+      if (isVerified) {
+        // Force-refresh token so anything depending on claims/state updates ASAP
+        try {
+          await user.getIdToken(true);
+        } catch {
+          // Ignore; user is still verified
+        }
+
         toast("Verified ✅ Welcome in.");
         await sendWelcomeEmailOnce();
+
+        // IMPORTANT: Auth context may still hold a stale user object. A hard
+        // navigation guarantees the app boots with the updated auth state.
+        window.location.assign(CONTINUE_URL);
       } else {
         toast("Still not verified. Click the link in the email first.");
       }
@@ -119,7 +141,7 @@ export default function EmailVerificationGate() {
           You’re logged in, but you can’t use Study Zen until you verify your email.
           We sent a verification link to{" "}
           <span className="font-semibold">{user?.email}</span>.
-          Check spam too. Email providers love drama.
+          CHECK SPAM TOO. Email providers love to play hide and seek with our emails.
         </p>
 
         <div className="mt-5 flex flex-col gap-3">
@@ -148,7 +170,6 @@ export default function EmailVerificationGate() {
         </div>
 
         <div className="mt-4 text-xs text-muted-foreground">
-          If email still doesn’t arrive: Firebase Auth → Settings → Authorized domains → add{" "}
           <span className="font-semibold">study-zen.netlify.app</span>.
         </div>
       </div>

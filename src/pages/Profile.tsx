@@ -1,21 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
+  BarChart3,
   Copy,
   Crown,
   Flame,
+  Info,
+  Sparkles,
   Timer,
   Trophy,
-  Info,
-  BarChart3,
-  Sparkles,
 } from "lucide-react";
+import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import OwnerBadge from "@/components/OwnerBadge";
-import { toast } from "sonner";
 
 type ProfileDoc = {
   displayName?: string;
@@ -25,10 +25,14 @@ type ProfileDoc = {
   bio?: string;
   role?: "owner" | "member";
 
-  // optional (future)
+  // cosmetics
   status?: string;
-  bannerUrl?: string;
-  decoration?: "aura" | "neon" | "royal" | "focus" | "none";
+  bannerUrl?: string; // optional
+  decoration?: "none" | "spark" | "coffee" | "stars" | "leaf" | "heart";
+  ring?: "none" | "aura" | "neon" | "royal" | "focus";
+  nameplate?: "none" | "neon" | "blueprint" | "soft";
+  effect?: "none" | "aurora" | "sparkles" | "scanlines" | "bubbles";
+
   createdAt?: any;
 };
 
@@ -66,7 +70,6 @@ function bannerGradient(seed: string) {
   const b = (a + 60 + (h % 80)) % 360;
   const c = (b + 65 + (h % 50)) % 360;
 
-  // premium-ish layered gradient
   return `
     radial-gradient(1000px circle at 18% 18%, hsla(${a}, 90%, 55%, 0.30), transparent 55%),
     radial-gradient(900px circle at 82% 30%, hsla(${b}, 90%, 55%, 0.26), transparent 60%),
@@ -82,22 +85,31 @@ function badgeTier(xp: number) {
   return { label: "Fresh", tone: "bg-secondary/25 border-border/40 text-muted-foreground" };
 }
 
-function decorationStyle(kind: ProfileDoc["decoration"], seed: string) {
+function fmtMemberSince(createdAt: any) {
+  try {
+    const d = createdAt?.toDate ? createdAt.toDate() : null;
+    if (!d) return "—";
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return "—";
+  }
+}
+
+function ringStyle(kind: ProfileDoc["ring"], seed: string) {
   const h = hashString(seed);
   const hue = h % 360;
 
-  // Different ring vibes (pure CSS, no assets)
   switch (kind) {
     case "royal":
       return {
-        ring: `conic-gradient(from 180deg, hsla(45,95%,55%,0.9), hsla(330,85%,65%,0.85), hsla(210,90%,60%,0.85), hsla(45,95%,55%,0.9))`,
-        glow: "shadow-[0_0_30px_rgba(255,200,60,0.25)]",
+        ring: `conic-gradient(from 180deg, hsla(45,95%,55%,0.95), hsla(330,85%,65%,0.90), hsla(210,90%,60%,0.90), hsla(45,95%,55%,0.95))`,
+        glow: "shadow-[0_0_34px_rgba(255,200,60,0.22)]",
         icon: <Crown className="w-3.5 h-3.5 text-yellow-300" />,
       };
     case "neon":
       return {
         ring: `conic-gradient(from 180deg, hsla(175,100%,50%,0.95), hsla(265,90%,65%,0.9), hsla(330,85%,60%,0.9), hsla(175,100%,50%,0.95))`,
-        glow: "shadow-[0_0_34px_rgba(0,255,204,0.22)]",
+        glow: "shadow-[0_0_34px_rgba(0,255,204,0.20)]",
         icon: <Sparkles className="w-3.5 h-3.5 text-primary" />,
       };
     case "focus":
@@ -107,23 +119,184 @@ function decorationStyle(kind: ProfileDoc["decoration"], seed: string) {
         icon: <Sparkles className="w-3.5 h-3.5 text-sky-300" />,
       };
     case "aura":
-    default:
       return {
         ring: `conic-gradient(from 180deg, hsla(${hue},90%,60%,0.85), hsla(${(hue + 120) % 360},90%,60%,0.80), hsla(${(hue + 240) % 360},90%,60%,0.80), hsla(${hue},90%,60%,0.85))`,
         glow: "shadow-[0_0_28px_rgba(160,120,255,0.16)]",
         icon: <Sparkles className="w-3.5 h-3.5 text-violet-300" />,
       };
+    case "none":
+    default:
+      return {
+        ring: `linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))`,
+        glow: "",
+        icon: <Sparkles className="w-3.5 h-3.5 text-muted-foreground" />,
+      };
   }
 }
 
-function fmtMemberSince(createdAt: any) {
-  try {
-    const d = createdAt?.toDate ? createdAt.toDate() : null;
-    if (!d) return "—";
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  } catch {
-    return "—";
+function nameplateClass(kind: ProfileDoc["nameplate"]) {
+  switch (kind) {
+    case "neon":
+      return "bg-primary/10 border-primary/25 shadow-[0_0_30px_rgba(20,184,166,0.18)]";
+    case "blueprint":
+      return "bg-sky-500/10 border-sky-500/25 shadow-[0_0_28px_rgba(56,189,248,0.14)]";
+    case "soft":
+      return "bg-secondary/15 border-border/40 shadow-[0_0_20px_rgba(255,255,255,0.06)]";
+    case "none":
+    default:
+      return "bg-secondary/10 border-border/40";
   }
+}
+
+function DecorationOverlay({ kind }: { kind: ProfileDoc["decoration"] }) {
+  if (!kind || kind === "none") return null;
+
+  // SVG overlays so you don’t need to host assets yet.
+  const base = "absolute -inset-2 pointer-events-none opacity-90";
+  const float = "decor-float";
+
+  if (kind === "spark") {
+    return (
+      <div className={`${base} ${float}`}>
+        <svg viewBox="0 0 120 120" className="w-full h-full">
+          <defs>
+            <radialGradient id="g1" cx="50%" cy="50%" r="60%">
+              <stop offset="0%" stopColor="rgba(20,184,166,0.65)" />
+              <stop offset="55%" stopColor="rgba(99,102,241,0.35)" />
+              <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+            </radialGradient>
+          </defs>
+          <circle cx="60" cy="60" r="55" fill="url(#g1)" />
+          <circle cx="20" cy="35" r="3" fill="rgba(255,255,255,0.7)" />
+          <circle cx="92" cy="30" r="2.5" fill="rgba(255,255,255,0.6)" />
+          <circle cx="95" cy="86" r="3.5" fill="rgba(255,255,255,0.55)" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (kind === "coffee") {
+    return (
+      <div className={`${base} ${float}`}>
+        <svg viewBox="0 0 120 120" className="w-full h-full">
+          <path
+            d="M35 75c0 10 7 18 25 18s25-8 25-18H35z"
+            fill="rgba(255,255,255,0.12)"
+          />
+          <path
+            d="M40 55h40c3 0 5 2 5 5v10c0 10-10 20-25 20S35 80 35 70V60c0-3 2-5 5-5z"
+            fill="rgba(255,255,255,0.18)"
+          />
+          <path
+            d="M84 60h6c6 0 10 4 10 10s-4 10-10 10h-7"
+            stroke="rgba(255,255,255,0.25)"
+            strokeWidth="4"
+            fill="none"
+          />
+          <path
+            d="M55 40c-6 6 6 10 0 16"
+            stroke="rgba(255,255,255,0.25)"
+            strokeWidth="3"
+            fill="none"
+            strokeLinecap="round"
+          />
+          <path
+            d="M70 40c-6 6 6 10 0 16"
+            stroke="rgba(255,255,255,0.25)"
+            strokeWidth="3"
+            fill="none"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  if (kind === "stars") {
+    return (
+      <div className={`${base} ${float}`}>
+        <svg viewBox="0 0 120 120" className="w-full h-full">
+          <g fill="rgba(255,255,255,0.65)">
+            <path d="M60 18l3 9 9 3-9 3-3 9-3-9-9-3 9-3 3-9z" />
+            <path d="M24 52l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6z" opacity="0.9" />
+            <path d="M96 66l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6z" opacity="0.8" />
+            <circle cx="86" cy="30" r="2.5" opacity="0.8" />
+            <circle cx="30" cy="86" r="3" opacity="0.7" />
+          </g>
+        </svg>
+      </div>
+    );
+  }
+
+  if (kind === "leaf") {
+    return (
+      <div className={`${base} ${float}`}>
+        <svg viewBox="0 0 120 120" className="w-full h-full">
+          <path
+            d="M85 30c-22 4-42 20-48 42 18-8 33-3 45-16 10-10 7-20 3-26z"
+            fill="rgba(34,197,94,0.22)"
+          />
+          <path
+            d="M40 80c12-18 25-28 46-40"
+            stroke="rgba(34,197,94,0.35)"
+            strokeWidth="3"
+            fill="none"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  if (kind === "heart") {
+    return (
+      <div className={`${base} ${float}`}>
+        <svg viewBox="0 0 120 120" className="w-full h-full">
+          <path
+            d="M60 95s-30-18-38-36c-6-14 2-28 16-30 10-1 18 5 22 12 4-7 12-13 22-12 14 2 22 16 16 30-8 18-38 36-38 36z"
+            fill="rgba(244,63,94,0.22)"
+          />
+          <circle cx="30" cy="30" r="2.5" fill="rgba(255,255,255,0.55)" />
+          <circle cx="92" cy="44" r="2" fill="rgba(255,255,255,0.45)" />
+        </svg>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function EffectLayer({ effect }: { effect: ProfileDoc["effect"] }) {
+  if (!effect || effect === "none") return null;
+
+  if (effect === "aurora") {
+    return (
+      <div className="absolute inset-0 pointer-events-none opacity-70">
+        <div className="aurora-one" />
+        <div className="aurora-two" />
+      </div>
+    );
+  }
+
+  if (effect === "sparkles") {
+    return (
+      <div className="absolute inset-0 pointer-events-none opacity-60 sparkle-layer" />
+    );
+  }
+
+  if (effect === "scanlines") {
+    return (
+      <div className="absolute inset-0 pointer-events-none opacity-30 scanlines" />
+    );
+  }
+
+  if (effect === "bubbles") {
+    return (
+      <div className="absolute inset-0 pointer-events-none opacity-55 bubbles" />
+    );
+  }
+
+  return null;
 }
 
 export default function Profile() {
@@ -201,10 +374,10 @@ export default function Profile() {
 
   const { level, pct } = levelFromXp(xp);
   const tier = badgeTier(xp);
-  const decor = decorationStyle(p.decoration || "aura", seed);
+  const ring = ringStyle(p.ring || "aura", seed);
 
-  const banner = p.bannerUrl
-    ? `url('${p.bannerUrl}')`
+  const banner = p.bannerUrl?.trim()
+    ? `url('${p.bannerUrl.trim()}')`
     : bannerGradient(seed);
 
   const copyProfileLink = async () => {
@@ -217,8 +390,65 @@ export default function Profile() {
     }
   };
 
+  const nameplate = nameplateClass(p.nameplate || "soft");
+
   return (
     <div className="max-w-3xl mx-auto space-y-5">
+      {/* CSS for effects (scoped-ish via unique classes) */}
+      <style>{`
+        .decor-float { animation: decorFloat 4.2s ease-in-out infinite; }
+        @keyframes decorFloat { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-4px); } }
+
+        .aurora-one {
+          position: absolute; inset: -30%;
+          background: radial-gradient(circle at 30% 30%, rgba(20,184,166,0.35), transparent 55%),
+                      radial-gradient(circle at 70% 45%, rgba(99,102,241,0.28), transparent 55%),
+                      radial-gradient(circle at 50% 85%, rgba(244,63,94,0.18), transparent 60%);
+          filter: blur(18px);
+          animation: auroraMove 8s ease-in-out infinite;
+        }
+        .aurora-two {
+          position: absolute; inset: -40%;
+          background: radial-gradient(circle at 20% 70%, rgba(56,189,248,0.25), transparent 55%),
+                      radial-gradient(circle at 80% 20%, rgba(168,85,247,0.20), transparent 55%);
+          filter: blur(22px);
+          animation: auroraMove2 10s ease-in-out infinite;
+          opacity: 0.85;
+        }
+        @keyframes auroraMove { 0%{transform: translate(0,0) scale(1)} 50%{transform: translate(10px,-10px) scale(1.05)} 100%{transform: translate(0,0) scale(1)} }
+        @keyframes auroraMove2 { 0%{transform: translate(0,0) scale(1)} 50%{transform: translate(-10px,12px) scale(1.06)} 100%{transform: translate(0,0) scale(1)} }
+
+        .scanlines {
+          background: repeating-linear-gradient(
+            to bottom,
+            rgba(255,255,255,0.12),
+            rgba(255,255,255,0.12) 1px,
+            rgba(0,0,0,0) 3px,
+            rgba(0,0,0,0) 6px
+          );
+          mix-blend-mode: overlay;
+        }
+
+        .sparkle-layer {
+          background-image:
+            radial-gradient(circle at 18% 30%, rgba(255,255,255,0.55) 0 1px, transparent 2px),
+            radial-gradient(circle at 70% 20%, rgba(255,255,255,0.45) 0 1px, transparent 2px),
+            radial-gradient(circle at 60% 70%, rgba(255,255,255,0.35) 0 1px, transparent 2px),
+            radial-gradient(circle at 25% 80%, rgba(255,255,255,0.40) 0 1px, transparent 2px);
+          animation: twinkle 2.8s ease-in-out infinite;
+        }
+        @keyframes twinkle { 0%,100%{opacity:.45} 50%{opacity:.85} }
+
+        .bubbles {
+          background-image:
+            radial-gradient(circle at 20% 70%, rgba(255,255,255,0.18) 0 14px, transparent 15px),
+            radial-gradient(circle at 75% 55%, rgba(255,255,255,0.14) 0 10px, transparent 11px),
+            radial-gradient(circle at 55% 85%, rgba(255,255,255,0.10) 0 18px, transparent 19px);
+          animation: bubbleMove 7s ease-in-out infinite;
+        }
+        @keyframes bubbleMove { 0%,100%{transform: translateY(0)} 50%{transform: translateY(-10px)} }
+      `}</style>
+
       {/* top bar */}
       <div className="flex items-center justify-between gap-3">
         <Link
@@ -237,7 +467,7 @@ export default function Profile() {
         </button>
       </div>
 
-      {/* Discord-ish hero card */}
+      {/* hero */}
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
@@ -252,10 +482,12 @@ export default function Profile() {
             backgroundPosition: "center",
           }}
         >
-          {/* subtle overlay for readability */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/30 to-black/70" />
+          <EffectLayer effect={p.effect || "none"} />
 
-          {/* pattern/noise vibe (matches your theme system) */}
+          {/* readability overlay */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/35 to-black/70" />
+
+          {/* optional subtle texture if your theme provides these vars */}
           <div
             className="absolute inset-0 opacity-60"
             style={{
@@ -267,88 +499,82 @@ export default function Profile() {
           />
         </div>
 
-        {/* profile body */}
+        {/* body */}
         <div className="relative px-5 sm:px-6 pb-6 pt-14 sm:pt-16">
           {/* avatar overlap */}
           <div className="absolute -top-10 sm:-top-12 left-5 sm:left-6">
-            <div className={`relative ${decor.glow}`}>
-              {/* decoration ring */}
-              <div
-                className="absolute -inset-1 rounded-[28px] blur-[0.2px]"
-                style={{ background: decor.ring }}
-              />
-              <div className="absolute -inset-[5px] rounded-[34px] opacity-35 blur-md" style={{ background: decor.ring }} />
+            <div className={`relative ${ring.glow}`}>
+              {/* ring */}
+              <div className="absolute -inset-1 rounded-[28px]" style={{ background: ring.ring }} />
+              <div className="absolute -inset-[5px] rounded-[34px] opacity-35 blur-md" style={{ background: ring.ring }} />
 
-              <div className="relative bg-background rounded-[26px] p-1.5 border border-border/40">
+              <div className="relative bg-background rounded-[26px] p-1.5 border border-border/40 overflow-hidden">
                 <img
                   src={avatar}
                   alt="avatar"
                   className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover"
                 />
+                <DecorationOverlay kind={p.decoration || "none"} />
               </div>
 
-              {/* tiny decor icon */}
+              {/* tiny icon */}
               <div className="absolute -bottom-2 -right-2 bg-background border border-border/40 rounded-full p-1.5">
-                {decor.icon}
+                {ring.icon}
               </div>
             </div>
           </div>
 
-          {/* header row */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center flex-wrap gap-2">
-                <h1 className="text-xl sm:text-2xl font-extrabold truncate">
-                  {displayName}
-                </h1>
-                {p.role === "owner" && <OwnerBadge />}
-                <span className={`text-[11px] px-2 py-1 rounded-full border ${tier.tone}`}>
-                  {tier.label}
-                </span>
-                <span className="text-[11px] px-2 py-1 rounded-full border bg-secondary/20 border-border/40 text-muted-foreground">
-                  Lvl {level}
-                </span>
-              </div>
+          {/* nameplate */}
+          <div className={`rounded-2xl border p-4 ${nameplate}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center flex-wrap gap-2">
+                  <h1 className="text-xl sm:text-2xl font-extrabold truncate">{displayName}</h1>
+                  {p.role === "owner" && <OwnerBadge />}
+                  <span className={`text-[11px] px-2 py-1 rounded-full border ${tier.tone}`}>
+                    {tier.label}
+                  </span>
+                  <span className="text-[11px] px-2 py-1 rounded-full border bg-secondary/20 border-border/40 text-muted-foreground">
+                    Lvl {level}
+                  </span>
+                </div>
 
-              <p className="text-sm text-muted-foreground truncate mt-0.5">@{uname}</p>
+                <p className="text-sm text-muted-foreground truncate mt-0.5">@{uname}</p>
 
-              {/* status */}
-              <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border bg-secondary/15 border-border/40 text-xs">
-                <span className="w-2 h-2 rounded-full bg-emerald-400/80" />
-                <span className="text-muted-foreground">
-                  {p.status?.trim() ? p.status : "Focused and online"}
-                </span>
+                {/* status */}
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border bg-secondary/15 border-border/40 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400/80" />
+                  <span className="text-muted-foreground">
+                    {p.status?.trim() ? p.status : "Focused and online"}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* optional buttons placeholder later (add friend / message) */}
-            <div className="flex items-center gap-2">
-              {/* keep empty for now to avoid feature creep */}
-            </div>
-          </div>
+            {/* tabs */}
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => setTab("about")}
+                className={`px-4 py-2 rounded-xl text-sm border transition ${
+                  tab === "about"
+                    ? "bg-primary/15 border-primary/30 text-primary"
+                    : "bg-secondary/15 border-border/40 text-muted-foreground hover:bg-secondary/25"
+                }`}
+              >
+                <Info className="w-4 h-4 inline mr-1" /> About
+              </button>
 
-          {/* tabs */}
-          <div className="mt-6 flex gap-2">
-            <button
-              onClick={() => setTab("about")}
-              className={`px-4 py-2 rounded-xl text-sm border transition ${
-                tab === "about"
-                  ? "bg-primary/15 border-primary/30 text-primary"
-                  : "bg-secondary/15 border-border/40 text-muted-foreground hover:bg-secondary/25"
-              }`}
-            >
-              <Info className="w-4 h-4 inline mr-1" /> About
-            </button>
-            <button
-              onClick={() => setTab("stats")}
-              className={`px-4 py-2 rounded-xl text-sm border transition ${
-                tab === "stats"
-                  ? "bg-primary/15 border-primary/30 text-primary"
-                  : "bg-secondary/15 border-border/40 text-muted-foreground hover:bg-secondary/25"
-              }`}
-            >
-              <BarChart3 className="w-4 h-4 inline mr-1" /> Stats
-            </button>
+              <button
+                onClick={() => setTab("stats")}
+                className={`px-4 py-2 rounded-xl text-sm border transition ${
+                  tab === "stats"
+                    ? "bg-primary/15 border-primary/30 text-primary"
+                    : "bg-secondary/15 border-border/40 text-muted-foreground hover:bg-secondary/25"
+                }`}
+              >
+                <BarChart3 className="w-4 h-4 inline mr-1" /> Stats
+              </button>
+            </div>
           </div>
 
           {/* tab content */}
@@ -381,9 +607,7 @@ export default function Profile() {
                       <p className="text-sm font-semibold">
                         {weeklyMinutes >= 240 ? "Serious grinder 🔥" : weeklyMinutes >= 60 ? "Consistent" : "Warming up"}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        (based on weekly minutes)
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">(based on weekly minutes)</p>
                     </div>
                   </div>
                 </motion.div>
@@ -396,7 +620,7 @@ export default function Profile() {
                   transition={{ duration: 0.22 }}
                   className="space-y-3"
                 >
-                  {/* XP block with progress */}
+                  {/* XP + progress */}
                   <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -406,10 +630,7 @@ export default function Profile() {
                     </div>
 
                     <div className="mt-3 h-2 w-full rounded-full bg-secondary/25 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-primary/80 transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
+                      <div className="h-full rounded-full bg-primary/80 transition-all" style={{ width: `${pct}%` }} />
                     </div>
 
                     <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
@@ -445,7 +666,7 @@ export default function Profile() {
                   </div>
 
                   <p className="text-xs text-muted-foreground">
-                    More features comming soon...
+                    Next upgrade: inventory + unlocking decorations with coins. People will grind study minutes just to get a glowing frame. Humans are predictable. 🙂
                   </p>
                 </motion.div>
               )}
@@ -455,4 +676,4 @@ export default function Profile() {
       </motion.div>
     </div>
   );
-    }
+                        }

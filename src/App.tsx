@@ -36,6 +36,7 @@ import AdminTickets from "@/pages/AdminTickets";
 import AdminTicket from "@/pages/AdminTicket";
 import AdminUserRemoval from "@/pages/AdminUserRemoval";
 
+import Profile from "@/pages/Profile";
 import NotFound from "@/pages/NotFound";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -85,6 +86,9 @@ export default function App() {
           }
         />
 
+        {/* Public profile */}
+        <Route path="/u/:username" element={<Profile />} />
+
         {/* Onboarding (no app shell) */}
         <Route
           path="/onboarding"
@@ -106,10 +110,7 @@ export default function App() {
           }
         >
           {/* Main */}
-          <Route
-            path="/home"
-            element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />}
-          />
+          <Route path="/home" element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />} />
           <Route path="/planner" element={<Planner />} />
           <Route path="/community" element={<Community />} />
           <Route path="/friends" element={<Friends />} />
@@ -178,9 +179,6 @@ export default function App() {
             )
           }
         />
-
-        {/*Profile*/}
-        <Route path="/u/:username" element={<Profile />} />
 
         {/* Not found */}
         <Route path="/404" element={<NotFound />} />

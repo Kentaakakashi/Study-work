@@ -15,6 +15,7 @@ import Onboarding from "@/pages/Onboarding";
 import Home from "@/pages/Home";
 import Planner from "@/pages/Planner";
 import Community from "@/pages/Community";
+import PostThread from "@/pages/PostThread"; // ✅ FIX: thread page route target
 import Friends from "@/pages/Friends";
 import Stats from "@/pages/Stats";
 import Leaderboard from "@/pages/Leaderboard";
@@ -110,9 +111,16 @@ export default function App() {
           }
         >
           {/* Main */}
-          <Route path="/home" element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />} />
+          <Route
+            path="/home"
+            element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />}
+          />
           <Route path="/planner" element={<Planner />} />
           <Route path="/community" element={<Community />} />
+
+          {/* ✅ FIX: community thread route */}
+          <Route path="/community/:postId" element={<PostThread />} />
+
           <Route path="/friends" element={<Friends />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/leaderboard" element={<Leaderboard />} />

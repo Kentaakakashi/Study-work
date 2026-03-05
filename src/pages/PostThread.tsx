@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ type Post = {
   subject: string;
   author: string;
   uid: string;
+  username?: string;
   createdAt?: any;
 };
 
@@ -30,18 +31,36 @@ type Comment = {
   id: string;
   uid: string;
   author: string;
+  username?: string;
   text: string;
   createdAt?: any;
 };
 
+type ProfileDoc = {
+  displayName?: string;
+  username?: string;
+};
+
 export default function PostThread() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { postId } = useParams();
   const nav = useNavigate();
 
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState("");
+  const [profiles, setProfiles] = useState<Record<string, ProfileDoc>>({});
+
+  const loadProfile = async (uid: string) => {
+    if (!uid) return;
+    if (profiles[uid]) return;
+    try {
+      const snap = await getDoc(doc(db, "profiles", uid));
+      setProfiles((prev) => ({ ...prev, [uid]: (snap.data() as ProfileDoc) || {} }));
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     if (!postId) return;
@@ -53,18 +72,17 @@ export default function PostThread() {
         nav("/community");
         return;
       }
-      setPost((snap.data() as Post) || null);
+      const data = (snap.data() as Post) || null;
+      setPost(data);
+      if (data?.uid) loadProfile(data.uid);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId, nav]);
 
   useEffect(() => {
     if (!postId) return;
 
-    const q = query(
-      collection(db, "posts", postId, "comments"),
-      orderBy("createdAt", "asc"),
-      limit(80)
-    );
+    const q = query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc"), limit(80));
 
     const unsub = onSnapshot(
       q,
@@ -72,11 +90,13 @@ export default function PostThread() {
         const out: Comment[] = [];
         snap.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
         setComments(out);
+        out.forEach((c) => c.uid && loadProfile(c.uid));
       },
       (err) => toast(err?.message || "Couldn't load comments")
     );
 
     return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
 
   const prettyTime = (p: any) => {
@@ -93,7 +113,8 @@ export default function PostThread() {
 
     const payload = {
       uid: user.uid,
-      author: user.displayName || user.email || "User",
+      author: profile?.displayName || user.displayName || user.email || "User",
+      username: profile?.username || null,
       text: text.trim(),
       createdAt: serverTimestamp(),
     };
@@ -114,6 +135,18 @@ export default function PostThread() {
     );
   }
 
+  const postProf = profiles[post.uid] || {};
+  const postUname = post.username || postProf.username || "";
+  const postAuthorName = postProf.displayName || post.author || "User";
+
+  const postAuthorLine = postUname ? (
+    <Link to={`/u/${postUname}`} className="hover:underline">
+      {postAuthorName}
+    </Link>
+  ) : (
+    <span>{postAuthorName}</span>
+  );
+
   return (
     <div className="max-w-3xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
@@ -129,7 +162,7 @@ export default function PostThread() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
         <h2 className="text-xl font-bold">{post.title}</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          by {post.author} {post.createdAt ? `• ${prettyTime(post.createdAt)}` : ""}
+          by {postAuthorLine} {post.createdAt ? `• ${prettyTime(post.createdAt)}` : ""} {postUname ? `• @${postUname}` : ""}
         </p>
         <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed">{post.body}</p>
       </motion.div>
@@ -143,14 +176,32 @@ export default function PostThread() {
           ) : (
             comments.map((c) => {
               const mine = c.uid === user?.uid;
+              const prof = profiles[c.uid] || {};
+              const uname = c.username || prof.username || "";
+              const name = mine ? "You" : prof.displayName || c.author || "User";
+
+              const nameNode =
+                !mine && uname ? (
+                  <Link to={`/u/${uname}`} className="hover:underline">
+                    {name}
+                  </Link>
+                ) : (
+                  <span>{name}</span>
+                );
+
               return (
                 <div key={c.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[85%] p-3 rounded-2xl border ${mine ? "bg-primary/10 border-primary/20" : "bg-secondary/15 border-border/40"}`}>
+                  <div
+                    className={`max-w-[85%] p-3 rounded-2xl border ${
+                      mine ? "bg-primary/10 border-primary/20" : "bg-secondary/15 border-border/40"
+                    }`}
+                  >
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold truncate">{mine ? "You" : c.author}</p>
+                      <p className="text-xs font-semibold truncate">{nameNode}</p>
                       <p className="text-[10px] text-muted-foreground">{c.createdAt ? prettyTime(c.createdAt) : ""}</p>
                     </div>
                     <p className="text-sm mt-1 whitespace-pre-wrap">{c.text}</p>
+                    {!mine && uname && <p className="text-[10px] text-muted-foreground mt-1">@{uname}</p>}
                   </div>
                 </div>
               );
@@ -176,4 +227,4 @@ export default function PostThread() {
       </div>
     </div>
   );
-                      }
+}

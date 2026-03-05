@@ -1,265 +1,254 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { Trophy, CalendarDays, Copy } from "lucide-react";
+import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { toast } from "@/components/ui/use-toast";
+import { db } from "@/lib/firebase";
+import { isOwnerUid } from "@/lib/roles";
+import OwnerBadge from "@/components/OwnerBadge";
+import { collection, doc, getDoc, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 
-type UserRow = {
-  uid: string;
+type StatsDoc = {
+  uid?: string;
   displayName?: string;
   username?: string;
-  avatarUrl?: string | null;
-  photoURL?: string | null;
+  photoURL?: string;
+  pfp?: string;
   xp?: number;
-  weeklyMinutes?: number;
   totalMinutes?: number;
-  streak?: number;
-  tier?: string;
-  level?: number;
+  weeklyMinutes?: number;
+  role?: "owner" | "member";
 };
 
-function clampNum(n: any, fallback = 0) {
-  const x = Number(n);
-  return Number.isFinite(x) ? x : fallback;
+type ProfileDoc = {
+  displayName?: string;
+  username?: string;
+  photoURL?: string;
+  pfp?: string;
+  role?: "owner" | "member";
+};
+
+function dice(seed: string) {
+  return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed || "user")}`;
+}
+
+function levelFromXp(xp: number) {
+  const perLevel = 250;
+  const lvl = Math.floor((xp || 0) / perLevel) + 1;
+  return { level: lvl };
 }
 
 export default function Leaderboard() {
-  const nav = useNavigate();
-  const { user } = useAuth();
-  const [tab, setTab] = useState<"xp" | "weekly">("xp");
-  const [rows, setRows] = useState<UserRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user, profile } = useAuth();
+  const isOwner = profile?.role === "owner" || isOwnerUid(user?.uid);
+
+  const [mode, setMode] = useState<"xp" | "weekly">("xp");
+  const [rows, setRows] = useState<StatsDoc[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, ProfileDoc>>({});
+
+  const loadProfile = async (uid: string) => {
+    if (!uid) return;
+    if (profiles[uid]) return;
+    try {
+      const snap = await getDoc(doc(db, "profiles", uid));
+      setProfiles((prev) => ({ ...prev, [uid]: (snap.data() as ProfileDoc) || {} }));
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
-    let alive = true;
+    const q =
+      mode === "xp"
+        ? query(collection(db, "stats"), orderBy("xp", "desc"), limit(50))
+        : query(collection(db, "stats"), orderBy("weeklyMinutes", "desc"), limit(50));
 
-    (async () => {
-      try {
-        setLoading(true);
-        const snap = await getDocs(collection(db, "stats"));
-        const list: UserRow[] = [];
-        snap.forEach((doc) => {
-          const d = doc.data() as any;
-          list.push({
-            uid: d.uid || doc.id,
-            displayName: d.displayName,
-            username: d.username,
-            avatarUrl: d.pfp ?? null,
-            photoURL: d.photoURL ?? null,
-            xp: clampNum(d.xp, 0),
-            weeklyMinutes: clampNum(d.weeklyMinutes, 0),
-            totalMinutes: clampNum(d.totalMinutes, 0),
-            streak: clampNum(d.streak, 0),
-            tier: d.tier,
-            level: clampNum(d.level, 1),
-          });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const arr: StatsDoc[] = [];
+        snap.forEach((d) => {
+          const data = (d.data() as StatsDoc) || {};
+          const uid = data.uid || d.id;
+          arr.push({ ...data, uid });
         });
-
-        if (!alive) return;
-        setRows(list);
-      } catch (e: any) {
-        console.error(e);
-        toast({
-          title: "Failed to load leaderboard",
-          description: e?.message || "Unknown error",
-          variant: "destructive",
-        });
-      } finally {
-        if (alive) setLoading(false);
+        setRows(arr);
+        arr.forEach((r) => r.uid && loadProfile(r.uid));
+      },
+      (err) => {
+        console.error("Leaderboard error:", err);
+        toast(err?.message || "Leaderboard failed to load");
       }
-    })();
+    );
 
-    return () => {
-      alive = false;
-    };
-  }, []);
+    return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
-  const sorted = useMemo(() => {
-    const copy = [...rows];
-    if (tab === "xp") {
-      copy.sort((a, b) => clampNum(b.xp) - clampNum(a.xp));
-    } else {
-      copy.sort((a, b) => clampNum(b.weeklyMinutes) - clampNum(a.weeklyMinutes));
+  const youUid = user?.uid || "";
+
+  const pickIdentity = (r: StatsDoc) => {
+    const uid = r.uid || "";
+    const p = (uid && profiles[uid]) || {};
+
+    const displayName = r.displayName || p.displayName || "User";
+    const username = r.username || p.username || "";
+
+    // IMPORTANT: Prefer in-app chosen PFP (profiles.pfp / profiles.photoURL)
+    // over cached stats photoURL (often Google photoURL).
+    const photoURL = p.pfp || p.photoURL || r.pfp || r.photoURL || "";
+    const avatar = photoURL || dice(username || displayName || uid);
+
+    const role = (r.role || p.role || "member") as "owner" | "member";
+    return { uid, displayName, username, avatar, role };
+  };
+
+  const metricText = (r: StatsDoc) => {
+    const xp = Number(r.xp || 0);
+    const total = Number(r.totalMinutes || 0);
+    const weekly = Number(r.weeklyMinutes || 0);
+    const { level } = levelFromXp(xp);
+
+    if (mode === "xp") return { right: `${xp}`, unit: "XP", sub: `Lvl ${level} • ${total} min total` };
+    return { right: `${weekly}`, unit: "MIN", sub: `This week • ${total} min total` };
+  };
+
+  const copyUid = async (uid: string) => {
+    try {
+      await navigator.clipboard.writeText(uid);
+      toast(`Copied UID ✅ (${uid.slice(0, 6)}...)`);
+    } catch {
+      try {
+        const el = document.createElement("textarea");
+        el.value = uid;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+        toast(`Copied UID ✅ (${uid.slice(0, 6)}...)`);
+      } catch {
+        toast("Couldn’t copy UID");
+      }
     }
-    return copy;
-  }, [rows, tab]);
-
-  const meUid = user?.uid;
+  };
 
   return (
-    <div className="min-h-[calc(100dvh-72px)] px-4 py-6 flex justify-center overflow-x-hidden">
-      <div className="w-full max-w-3xl">
-        <div className="rounded-3xl bg-background/40 border border-border/40 backdrop-blur-md shadow-lg p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
-              <span className="text-amber-400">🏆</span> Leaderboard
-            </div>
-          </div>
-
-          <div className="mt-4 flex gap-2">
-            <button
-              onClick={() => setTab("xp")}
-              className={`px-4 py-2 rounded-full text-sm border transition ${
-                tab === "xp"
-                  ? "bg-primary/20 border-primary/40 text-primary"
-                  : "bg-secondary/10 border-border/40 text-muted-foreground hover:bg-secondary/20"
-              }`}
-            >
-              Global (XP)
-            </button>
-            <button
-              onClick={() => setTab("weekly")}
-              className={`px-4 py-2 rounded-full text-sm border transition flex items-center gap-2 ${
-                tab === "weekly"
-                  ? "bg-primary/20 border-primary/40 text-primary"
-                  : "bg-secondary/10 border-border/40 text-muted-foreground hover:bg-secondary/20"
-              }`}
-            >
-              <span>🗓️</span> Weekly (Minutes)
-            </button>
+    // Match other pages' mobile spacing so it doesn't feel "zoomed" / different sizing.
+    <div className="max-w-3xl w-full mx-auto space-y-6 px-4 pb-24">
+      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Trophy className="w-5 h-5 text-primary" />
+            <h3 className="text-lg font-bold">Leaderboard</h3>
           </div>
         </div>
 
-        <div className="mt-5 space-y-3 overflow-x-hidden">
-          {loading ? (
-            <div className="rounded-3xl bg-background/35 border border-border/40 backdrop-blur-md p-5 text-muted-foreground">
-              Loading leaderboard…
-            </div>
-          ) : sorted.length === 0 ? (
-            <div className="rounded-3xl bg-background/35 border border-border/40 backdrop-blur-md p-5 text-muted-foreground">
-              No users yet.
-            </div>
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setMode("xp")}
+            className={`px-3 py-1 rounded-full bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition ${
+              mode === "xp" ? "bg-primary/20 border-primary/30" : ""
+            }`}
+          >
+            Global (XP)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMode("weekly")}
+            className={`px-3 py-1 rounded-full bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition ${
+              mode === "weekly" ? "bg-primary/20 border-primary/30" : ""
+            }`}
+          >
+            <CalendarDays className="w-4 h-4 inline mr-1" />
+            Weekly (Minutes)
+          </button>
+        </div>
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
+        <div className="space-y-3">
+          {rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No data yet.</p>
           ) : (
-            sorted.map((u, idx) => {
-              const isYou = !!meUid && u.uid === meUid;
-              const rank = idx + 1;
+            rows.map((r, i) => {
+              const id = pickIdentity(r);
+              const m = metricText(r);
+              const isYou = id.uid === youUid;
 
-              const name = (u.displayName || "User").trim();
-              const username = (u.username || "").trim();
-              const avatar =
-                (u.avatarUrl && u.avatarUrl.trim()) ||
-                (u.photoURL && u.photoURL.trim()) ||
-                "";
-
-              const metric =
-                tab === "xp"
-                  ? { label: "XP", value: clampNum(u.xp) }
-                  : { label: "min", value: clampNum(u.weeklyMinutes) };
+              const canLink = !!id.username && id.username !== "unknown";
+              const profilePath = canLink ? `/u/${id.username}` : null;
 
               return (
                 <div
-                  key={u.uid}
-                  // NOTE: these are the important fixes:
-                  // - w-full + min-w-0 prevents flex content from forcing layout wider than viewport
-                  // - overflow-hidden stops any tiny overflow from glows/borders on mobile
-                  className={`relative w-full min-w-0 overflow-hidden flex items-center justify-between gap-3 p-4 rounded-2xl bg-secondary/15 border ${
-                    // Replaced the big shadow glow (can cause mobile overflow) with a ring glow.
-                    isYou ? "border-primary/50 ring-1 ring-primary/40" : "border-border/40"
+                  key={`${id.uid}_${mode}_${i}`}
+                  className={`relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-secondary/15 border ${
+                    isYou ? "border-primary/50 shadow-[0_0_30px_rgba(20,184,166,0.35)]" : "border-border/40"
                   }`}
                 >
                   {isYou && (
-                    <div className="absolute -top-2 left-4 px-2 py-0.5 rounded-full text-[11px] bg-primary/20 text-primary border border-primary/30">
+                    <div className="absolute -top-2 left-4 text-[10px] tracking-wider font-semibold px-2 py-0.5 rounded-full bg-primary/25 border border-primary/30">
                       YOU
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 shrink-0 text-center font-bold text-amber-400 text-lg">
-                      #{rank}
+                  {profilePath ? (
+                    <Link to={profilePath} className="flex items-center gap-3 min-w-0 hover:opacity-95 transition">
+                      <div className="w-10 text-center">
+                        <span className="text-primary font-bold">#{i + 1}</span>
+                      </div>
+
+                      <img src={id.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="avatar" />
+
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate flex items-center">
+                          <span className="truncate">{id.displayName}</span>
+                          {id.role === "owner" && <OwnerBadge />}
+                        </p>
+
+                        <p className="text-xs text-muted-foreground truncate">
+                          {m.sub} • @{id.username}
+                        </p>
+                      </div>
+                    </Link>
+                  ) : (
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 text-center">
+                        <span className="text-primary font-bold">#{i + 1}</span>
+                      </div>
+
+                      <img src={id.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="avatar" />
+
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate flex items-center">
+                          <span className="truncate">{id.displayName}</span>
+                          {id.role === "owner" && <OwnerBadge />}
+                        </p>
+
+                        <p className="text-xs text-muted-foreground truncate">
+                          {m.sub} {id.username ? `• @${id.username}` : ""}
+                        </p>
+                      </div>
                     </div>
+                  )}
 
-                    <img
-                      src={
-                        avatar ||
-                        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Crect width='100%25' height='100%25' fill='%23222'/%3E%3Ctext x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' fill='%23aaa' font-size='28'%3E%3F%3C/text%3E%3C/svg%3E"
-                      }
-                      alt={name}
-                      className="w-12 h-12 shrink-0 rounded-2xl object-cover border border-border/40"
-                      loading="lazy"
-                      decoding="async"
-                    />
-
-                    <button
-                      onClick={() => {
-                        if (username) nav(`/u/${username}`);
-                      }}
-                      className="min-w-0 text-left"
-                      title={username ? `Open @${username}` : "No username set"}
-                      disabled={!username}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="font-semibold truncate">{name}</div>
-                        {isYou && (
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-amber-400/15 text-amber-300 border border-amber-300/30">
-                            OWNER
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        Lv{clampNum(u.level, 1)} •{" "}
-                        {tab === "xp"
-                          ? `${clampNum(u.totalMinutes)} min total`
-                          : `${clampNum(u.weeklyMinutes)} min this week`}{" "}
-                        {username ? `• @${username}` : ""}
-                      </div>
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    <button
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(u.uid);
-                          toast({ title: "Copied UID ✅" });
-                        } catch {
-                          toast({
-                            title: "Copy failed",
-                            description: "Your browser blocked clipboard access.",
-                            variant: "destructive",
-                          });
-                        }
-                      }}
-                      className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-xs hover:bg-secondary/30 transition shrink-0"
-                      title="Copy Firebase Auth UID"
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            d="M8 7H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <rect
-                            x="9"
-                            y="2"
-                            width="13"
-                            height="13"
-                            rx="2"
-                            ry="2"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
+                  <div className="flex items-center gap-3">
+                    {isOwner && id.uid && (
+                      <button
+                        onClick={() => copyUid(id.uid)}
+                        className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-xs hover:bg-secondary/30 transition"
+                        title="Copy Firebase Auth UID"
+                      >
+                        <Copy className="w-4 h-4 inline mr-1" />
                         UID
-                      </span>
-                    </button>
+                      </button>
+                    )}
 
-                    <div className="text-right shrink-0">
-                      <div className="text-lg font-bold text-amber-400 leading-none">
-                        {metric.value}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{metric.label}</div>
+                    <div className="text-right">
+                      <p className="text-primary font-bold text-lg leading-none">{m.right}</p>
+                      <p className="text-primary/80 font-semibold text-xs">{m.unit}</p>
                     </div>
                   </div>
                 </div>
@@ -267,7 +256,7 @@ export default function Leaderboard() {
             })
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
-                }
+            }

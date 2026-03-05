@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useAuth } from "@/lib/AuthContext";
+import { useAuth } from "@/lib/auth";
 import { toast } from "@/components/ui/use-toast";
 
 type UserRow = {

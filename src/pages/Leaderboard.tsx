@@ -37,7 +37,7 @@ export default function Leaderboard() {
     (async () => {
       try {
         setLoading(true);
-        const snap = await getDocs(collection(db, "users"));
+        const snap = await getDocs(collection(db, "stats"));
         const list: UserRow[] = [];
         snap.forEach((doc) => {
           const d = doc.data() as any;
@@ -45,7 +45,7 @@ export default function Leaderboard() {
             uid: d.uid || doc.id,
             displayName: d.displayName,
             username: d.username,
-            avatarUrl: d.avatarUrl ?? null,
+            avatarUrl: d.pfp ?? null,
             photoURL: d.photoURL ?? null,
             xp: clampNum(d.xp, 0),
             weeklyMinutes: clampNum(d.weeklyMinutes, 0),

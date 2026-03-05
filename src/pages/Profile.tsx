@@ -17,6 +17,14 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import OwnerBadge from "@/components/OwnerBadge";
 
+type CosmeticsBlock = {
+  decoration?: string;
+  ring?: string;
+  nameplate?: string;
+  effect?: string;
+  bannerUrl?: string;
+};
+
 type ProfileDoc = {
   displayName?: string;
   username?: string;
@@ -25,13 +33,17 @@ type ProfileDoc = {
   bio?: string;
   role?: "owner" | "member";
 
-  // cosmetics
   status?: string;
-  bannerUrl?: string; // optional
-  decoration?: "none" | "spark" | "coffee" | "stars" | "leaf" | "heart";
-  ring?: "none" | "aura" | "neon" | "royal" | "focus";
-  nameplate?: "none" | "neon" | "blueprint" | "soft";
-  effect?: "none" | "aurora" | "sparkles" | "scanlines" | "bubbles";
+
+  // NEW format
+  cosmetics?: CosmeticsBlock;
+
+  // OLD format fallback
+  bannerUrl?: string;
+  decoration?: string;
+  ring?: string;
+  nameplate?: string;
+  effect?: string;
 
   createdAt?: any;
 };
@@ -44,44 +56,30 @@ type StatsDoc = {
 };
 
 function dice(seed: string) {
-  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed || "user")}`;
+  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+    seed || "user"
+  )}`;
+}
+
+function hashString(s: string) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
 }
 
 function levelFromXp(xp: number) {
-  const perLevel = 250;
-  const lvl = Math.floor((xp || 0) / perLevel) + 1;
-  const into = (xp || 0) % perLevel;
-  const pct = Math.min(100, Math.max(0, (into / perLevel) * 100));
+  const lvl = Math.floor(Math.sqrt(Math.max(0, xp) / 100)) + 1;
+  const base = (lvl - 1) * (lvl - 1) * 100;
+  const next = lvl * lvl * 100;
+  const pct = next === base ? 0 : Math.min(1, (xp - base) / (next - base));
   return { level: lvl, pct };
 }
 
-function hashString(str: string) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function bannerGradient(seed: string) {
-  const h = hashString(seed);
-  const a = h % 360;
-  const b = (a + 60 + (h % 80)) % 360;
-  const c = (b + 65 + (h % 50)) % 360;
-
-  return `
-    radial-gradient(1000px circle at 18% 18%, hsla(${a}, 90%, 55%, 0.30), transparent 55%),
-    radial-gradient(900px circle at 82% 30%, hsla(${b}, 90%, 55%, 0.26), transparent 60%),
-    radial-gradient(700px circle at 55% 110%, hsla(${c}, 90%, 55%, 0.22), transparent 60%),
-    linear-gradient(180deg, rgba(10,12,18,0.92), rgba(6,7,11,0.96))
-  `;
-}
-
 function badgeTier(xp: number) {
-  if (xp >= 5000) return { label: "Legend", tone: "bg-primary/20 border-primary/35 text-primary" };
-  if (xp >= 2000) return { label: "Grinder", tone: "bg-emerald-500/10 border-emerald-500/25 text-emerald-300" };
-  if (xp >= 500) return { label: "Learner", tone: "bg-sky-500/10 border-sky-500/25 text-sky-300" };
+  if (xp >= 10000) return { label: "Legend", tone: "bg-yellow-500/15 border-yellow-500/25 text-yellow-200" };
+  if (xp >= 5000) return { label: "Elite", tone: "bg-violet-500/12 border-violet-500/25 text-violet-200" };
+  if (xp >= 2000) return { label: "Grinder", tone: "bg-sky-500/12 border-sky-500/25 text-sky-200" };
+  if (xp >= 750) return { label: "Rising", tone: "bg-emerald-500/12 border-emerald-500/25 text-emerald-200" };
   return { label: "Fresh", tone: "bg-secondary/25 border-border/40 text-muted-foreground" };
 }
 
@@ -89,13 +87,60 @@ function fmtMemberSince(createdAt: any) {
   try {
     const d = createdAt?.toDate ? createdAt.toDate() : null;
     if (!d) return "—";
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    return d.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   } catch {
     return "—";
   }
 }
 
-function ringStyle(kind: ProfileDoc["ring"], seed: string) {
+/**
+ * Normalize cosmetics:
+ * - Prefer NEW: p.cosmetics.*
+ * - Fallback to OLD: p.*
+ * - Map new ids (from Settings) into existing visual system
+ */
+function normalizeCosmetics(p: ProfileDoc) {
+  const block = p.cosmetics || {};
+
+  const decorationRaw = (block.decoration ?? p.decoration ?? "none").toString();
+  const effectRaw = (block.effect ?? p.effect ?? "none").toString();
+  const ringRaw = (block.ring ?? p.ring ?? "none").toString();
+  const nameplateRaw = (block.nameplate ?? p.nameplate ?? "soft").toString();
+  const bannerUrl = (block.bannerUrl ?? p.bannerUrl ?? "").toString();
+
+  // Map decoration ids
+  const decoration =
+    decorationRaw === "sparkle" ? "spark" :
+    decorationRaw === "hearts" ? "heart" :
+    decorationRaw === "baker-bear" ? "baker-bear" :
+    decorationRaw;
+
+  // Map effect ids
+  const effect =
+    effectRaw === "aura" ? "aurora" :
+    effectRaw === "butterfly-haven" ? "sparkles" :
+    effectRaw;
+
+  // Map ring ids
+  const ring =
+    ringRaw === "glow" ? "neon" :
+    ringRaw === "pixel" ? "focus" :
+    ringRaw === "soft" ? "aura" :
+    ringRaw;
+
+  // Map nameplate ids
+  const nameplate =
+    nameplateRaw === "magic-hearts-blue" ? "neon" :
+    nameplateRaw;
+
+  return { decoration, effect, ring, nameplate, bannerUrl };
+}
+
+function ringStyle(kind: string, seed: string) {
   const h = hashString(seed);
   const hue = h % 360;
 
@@ -134,10 +179,10 @@ function ringStyle(kind: ProfileDoc["ring"], seed: string) {
   }
 }
 
-function nameplateClass(kind: ProfileDoc["nameplate"]) {
+function nameplateClass(kind: string) {
   switch (kind) {
     case "neon":
-      return "bg-primary/10 border-primary/25 shadow-[0_0_30px_rgba(20,184,166,0.18)]";
+      return "bg-primary/10 border-primary/25 shadow-[0_0_30px_rgba(20,184,166,0.16)]";
     case "blueprint":
       return "bg-sky-500/10 border-sky-500/25 shadow-[0_0_28px_rgba(56,189,248,0.14)]";
     case "soft":
@@ -148,10 +193,9 @@ function nameplateClass(kind: ProfileDoc["nameplate"]) {
   }
 }
 
-function DecorationOverlay({ kind }: { kind: ProfileDoc["decoration"] }) {
+function DecorationOverlay({ kind }: { kind: string }) {
   if (!kind || kind === "none") return null;
 
-  // SVG overlays so you don’t need to host assets yet.
   const base = "absolute -inset-2 pointer-events-none opacity-90";
   const float = "decor-float";
 
@@ -263,10 +307,20 @@ function DecorationOverlay({ kind }: { kind: ProfileDoc["decoration"] }) {
     );
   }
 
+  // NEW: baker-bear (simple cute stamp)
+  if (kind === "baker-bear") {
+    return (
+      <div className={`${base} ${float}`}>
+        <div className="absolute top-2 right-2 text-xl opacity-75">🐻‍❄️</div>
+        <div className="absolute bottom-3 left-3 text-lg opacity-55">🥐</div>
+      </div>
+    );
+  }
+
   return null;
 }
 
-function EffectLayer({ effect }: { effect: ProfileDoc["effect"] }) {
+function EffectLayer({ effect }: { effect: string }) {
   if (!effect || effect === "none") return null;
 
   if (effect === "aurora") {
@@ -279,24 +333,25 @@ function EffectLayer({ effect }: { effect: ProfileDoc["effect"] }) {
   }
 
   if (effect === "sparkles") {
-    return (
-      <div className="absolute inset-0 pointer-events-none opacity-60 sparkle-layer" />
-    );
+    return <div className="absolute inset-0 pointer-events-none opacity-60 sparkle-layer" />;
   }
 
   if (effect === "scanlines") {
-    return (
-      <div className="absolute inset-0 pointer-events-none opacity-30 scanlines" />
-    );
+    return <div className="absolute inset-0 pointer-events-none opacity-30 scanlines" />;
   }
 
   if (effect === "bubbles") {
-    return (
-      <div className="absolute inset-0 pointer-events-none opacity-55 bubbles" />
-    );
+    return <div className="absolute inset-0 pointer-events-none opacity-55 bubbles" />;
   }
 
   return null;
+}
+
+function bannerGradient(seed: string) {
+  const h = hashString(seed) % 360;
+  const h2 = (h + 60) % 360;
+  const h3 = (h + 120) % 360;
+  return `linear-gradient(135deg, hsla(${h},90%,55%,0.30), hsla(${h2},90%,55%,0.22), hsla(${h3},90%,55%,0.18))`;
 }
 
 export default function Profile() {
@@ -343,41 +398,51 @@ export default function Profile() {
     return (
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="glass-card p-6 rounded-3xl">
-          <p className="text-sm text-muted-foreground">No user found for that username.</p>
+          <p className="text-sm text-muted-foreground">
+            No user found for that username.
+          </p>
           <Link
             to="/leaderboard"
-            className="inline-flex items-center mt-4 px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition"
+            className="inline-flex items-center gap-2 mt-3 text-sm text-primary underline"
           >
-            <ArrowLeft className="w-4 h-4 mr-1" /> Back
+            <ArrowLeft className="w-4 h-4" />
+            Back to leaderboard
           </Link>
         </div>
       </div>
     );
   }
 
-  if (!p) {
+  if (!p || !s) {
     return (
-      <div className="max-w-3xl mx-auto">
-        <div className="glass-card p-6 rounded-3xl">Loading…</div>
+      <div className="max-w-3xl mx-auto space-y-4">
+        <div className="glass-card p-6 rounded-3xl">
+          <p className="text-sm text-muted-foreground">Loading profile…</p>
+        </div>
       </div>
     );
   }
 
-  const displayName = p.displayName || "User";
-  const uname = p.username || (username || "").replace(/^@+/, "");
-  const avatar = p.pfp || p.photoURL || dice(uname || displayName || uid || "user");
+  const uname = (username || "").toLowerCase().replace(/^@+/, "");
+  const avatar =
+    p.pfp?.trim() ||
+    p.photoURL?.trim() ||
+    dice(p.displayName || uname || "user");
 
-  const xp = Number(s?.xp || 0);
-  const totalMinutes = Number(s?.totalMinutes || 0);
-  const weeklyMinutes = Number(s?.weeklyMinutes || 0);
+  const xp = Number((s as any)?.xp || 0);
+  const totalMinutes = Number((s as any)?.totalMinutes || 0);
+  const weeklyMinutes = Number((s as any)?.weeklyMinutes || 0);
   const streak = Number((s as any)?.streak || 0);
 
   const { level, pct } = levelFromXp(xp);
   const tier = badgeTier(xp);
-  const ring = ringStyle(p.ring || "aura", seed);
 
-  const banner = p.bannerUrl?.trim()
-    ? `url('${p.bannerUrl.trim()}')`
+  const c = normalizeCosmetics(p);
+
+  const ring = ringStyle(c.ring || "aura", seed);
+
+  const banner = (c.bannerUrl || "").trim()
+    ? `url('${c.bannerUrl.trim()}')`
     : bannerGradient(seed);
 
   const copyProfileLink = async () => {
@@ -390,11 +455,10 @@ export default function Profile() {
     }
   };
 
-  const nameplate = nameplateClass(p.nameplate || "soft");
+  const nameplate = nameplateClass(c.nameplate || "soft");
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
-      {/* CSS for effects (scoped-ish via unique classes) */}
       <style>{`
         .decor-float { animation: decorFloat 4.2s ease-in-out infinite; }
         @keyframes decorFloat { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-4px); } }
@@ -426,254 +490,221 @@ export default function Profile() {
             rgba(0,0,0,0) 3px,
             rgba(0,0,0,0) 6px
           );
-          mix-blend-mode: overlay;
+          animation: scanMove 2.2s linear infinite;
         }
+        @keyframes scanMove { from { background-position: 0 0; } to { background-position: 0 30px; } }
 
         .sparkle-layer {
-          background-image:
-            radial-gradient(circle at 18% 30%, rgba(255,255,255,0.55) 0 1px, transparent 2px),
-            radial-gradient(circle at 70% 20%, rgba(255,255,255,0.45) 0 1px, transparent 2px),
-            radial-gradient(circle at 60% 70%, rgba(255,255,255,0.35) 0 1px, transparent 2px),
-            radial-gradient(circle at 25% 80%, rgba(255,255,255,0.40) 0 1px, transparent 2px);
-          animation: twinkle 2.8s ease-in-out infinite;
+          background:
+            radial-gradient(circle at 22% 30%, rgba(255,255,255,0.55), transparent 35%),
+            radial-gradient(circle at 78% 42%, rgba(255,255,255,0.45), transparent 40%),
+            radial-gradient(circle at 55% 75%, rgba(255,255,255,0.35), transparent 45%);
+          filter: blur(0.4px);
+          animation: sparkleTwinkle 2.6s ease-in-out infinite;
         }
-        @keyframes twinkle { 0%,100%{opacity:.45} 50%{opacity:.85} }
+        @keyframes sparkleTwinkle { 0%,100%{opacity:0.35} 50%{opacity:0.8} }
 
         .bubbles {
-          background-image:
-            radial-gradient(circle at 20% 70%, rgba(255,255,255,0.18) 0 14px, transparent 15px),
-            radial-gradient(circle at 75% 55%, rgba(255,255,255,0.14) 0 10px, transparent 11px),
-            radial-gradient(circle at 55% 85%, rgba(255,255,255,0.10) 0 18px, transparent 19px);
-          animation: bubbleMove 7s ease-in-out infinite;
+          background:
+            radial-gradient(circle at 18% 62%, rgba(255,255,255,0.20), transparent 30%),
+            radial-gradient(circle at 72% 22%, rgba(255,255,255,0.18), transparent 28%),
+            radial-gradient(circle at 56% 72%, rgba(255,255,255,0.14), transparent 30%);
+          filter: blur(0.6px);
+          animation: bubblesDrift 4.8s ease-in-out infinite;
         }
-        @keyframes bubbleMove { 0%,100%{transform: translateY(0)} 50%{transform: translateY(-10px)} }
+        @keyframes bubblesDrift { 0%,100%{transform: translateY(0)} 50%{transform: translateY(-6px)} }
       `}</style>
 
-      {/* top bar */}
-      <div className="flex items-center justify-between gap-3">
-        <Link
-          to="/leaderboard"
-          className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition"
-        >
-          <ArrowLeft className="w-4 h-4 inline mr-1" /> Back
-        </Link>
-
-        <button
-          onClick={copyProfileLink}
-          className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition"
-          title="Copy profile link"
-        >
-          <Copy className="w-4 h-4 inline mr-1" /> Share
-        </button>
-      </div>
-
-      {/* hero */}
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card overflow-hidden rounded-3xl"
-      >
-        {/* banner */}
+      <div className="glass-card p-6 rounded-3xl overflow-hidden relative">
         <div
-          className="relative h-36 sm:h-44"
+          className="absolute inset-0"
           style={{
             backgroundImage: banner,
             backgroundSize: "cover",
             backgroundPosition: "center",
+            opacity: 0.95,
           }}
-        >
-          <EffectLayer effect={p.effect || "none"} />
+        />
+        <EffectLayer effect={c.effect || "none"} />
+        <div className="absolute inset-0 bg-black/35" />
 
-          {/* readability overlay */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/35 to-black/70" />
+        <div className="relative">
+          <div className="flex items-center justify-between">
+            <Link
+              to="/leaderboard"
+              className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Link>
 
-          {/* optional subtle texture if your theme provides these vars */}
-          <div
-            className="absolute inset-0 opacity-60"
-            style={{
-              backgroundImage: "var(--bg-pattern-url), var(--bg-noise-url)",
-              backgroundRepeat: "repeat, repeat",
-              backgroundSize: "220px 220px, 160px 160px",
-              mixBlendMode: "overlay",
-            }}
-          />
-        </div>
+            <button
+              onClick={copyProfileLink}
+              className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
+            >
+              <Copy className="w-4 h-4" />
+              Copy profile link
+            </button>
+          </div>
 
-        {/* body */}
-        <div className="relative px-5 sm:px-6 pb-6 pt-14 sm:pt-16">
-          {/* avatar overlap */}
-          <div className="absolute -top-10 sm:-top-12 left-5 sm:left-6">
-            <div className={`relative ${ring.glow}`}>
-              {/* ring */}
-              <div className="absolute -inset-1 rounded-[28px]" style={{ background: ring.ring }} />
-              <div className="absolute -inset-[5px] rounded-[34px] opacity-35 blur-md" style={{ background: ring.ring }} />
-
-              <div className="relative bg-background rounded-[26px] p-1.5 border border-border/40 overflow-hidden">
+          <div className="mt-6 flex flex-col sm:flex-row sm:items-end gap-4">
+            <div className="relative">
+              <div
+                className={`p-[3px] rounded-[22px] ${ring.glow}`}
+                style={{ background: ring.ring }}
+              >
                 <img
                   src={avatar}
                   alt="avatar"
                   className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover"
                 />
-                <DecorationOverlay kind={p.decoration || "none"} />
+                <DecorationOverlay kind={c.decoration || "none"} />
               </div>
 
-              {/* tiny icon */}
               <div className="absolute -bottom-2 -right-2 bg-background border border-border/40 rounded-full p-1.5">
                 {ring.icon}
               </div>
             </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className={`px-3 py-1.5 rounded-2xl border ${nameplate}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-semibold truncate">
+                      {p.displayName || `@${uname}`}
+                    </span>
+                    {p.role === "owner" && <OwnerBadge />}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    @{uname}
+                  </div>
+                </div>
+
+                <div className={`px-3 py-1.5 rounded-2xl border ${tier.tone}`}>
+                  <div className="text-xs">Tier</div>
+                  <div className="font-semibold text-sm">{tier.label}</div>
+                </div>
+
+                <div className="px-3 py-1.5 rounded-2xl border bg-secondary/10 border-border/40">
+                  <div className="text-xs text-muted-foreground">Level</div>
+                  <div className="font-semibold text-sm">{level}</div>
+                </div>
+              </div>
+
+              <div className="mt-3 text-sm text-white/90">
+                {p.status || "Focused. Unbothered. Studying."}
+              </div>
+
+              {p.bio && (
+                <div className="mt-2 text-sm text-white/75 leading-relaxed">
+                  {p.bio}
+                </div>
+              )}
+
+              <div className="mt-4 flex items-center gap-2 text-xs text-white/70">
+                <Info className="w-4 h-4" />
+                Member since {fmtMemberSince(p.createdAt)}
+              </div>
+            </div>
           </div>
 
-          {/* nameplate */}
-          <div className={`rounded-2xl border p-4 ${nameplate}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center flex-wrap gap-2">
-                  <h1 className="text-xl sm:text-2xl font-extrabold truncate">{displayName}</h1>
-                  {p.role === "owner" && <OwnerBadge />}
-                  <span className={`text-[11px] px-2 py-1 rounded-full border ${tier.tone}`}>
-                    {tier.label}
-                  </span>
-                  <span className="text-[11px] px-2 py-1 rounded-full border bg-secondary/20 border-border/40 text-muted-foreground">
-                    Lvl {level}
-                  </span>
-                </div>
+          <div className="mt-6 flex gap-2">
+            <button
+              onClick={() => setTab("about")}
+              className={`px-4 py-2 rounded-2xl text-sm border transition ${
+                tab === "about"
+                  ? "bg-white/15 border-white/20 text-white"
+                  : "bg-black/10 border-white/10 text-white/70 hover:text-white"
+              }`}
+            >
+              About
+            </button>
+            <button
+              onClick={() => setTab("stats")}
+              className={`px-4 py-2 rounded-2xl text-sm border transition ${
+                tab === "stats"
+                  ? "bg-white/15 border-white/20 text-white"
+                  : "bg-black/10 border-white/10 text-white/70 hover:text-white"
+              }`}
+            >
+              Stats
+            </button>
+          </div>
+        </div>
+      </div>
 
-                <p className="text-sm text-muted-foreground truncate mt-0.5">@{uname}</p>
-
-                {/* status */}
-                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border bg-secondary/15 border-border/40 text-xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400/80" />
-                  <span className="text-muted-foreground">
-                    {p.status?.trim() ? p.status : "Focused and online"}
-                  </span>
-                </div>
+      <AnimatePresence mode="wait">
+        {tab === "about" ? (
+          <motion.div
+            key="about"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="glass-card p-6 rounded-3xl"
+          >
+            <h3 className="font-semibold mb-3">About</h3>
+            <div className="grid gap-3 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Flame className="w-4 h-4 text-orange-300" />
+                Streak: <span className="text-foreground font-semibold">{streak}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Timer className="w-4 h-4 text-sky-300" />
+                Weekly minutes:{" "}
+                <span className="text-foreground font-semibold">{weeklyMinutes}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-yellow-300" />
+                Total XP: <span className="text-foreground font-semibold">{xp}</span>
               </div>
             </div>
 
-            {/* tabs */}
-            <div className="mt-5 flex gap-2">
-              <button
-                onClick={() => setTab("about")}
-                className={`px-4 py-2 rounded-xl text-sm border transition ${
-                  tab === "about"
-                    ? "bg-primary/15 border-primary/30 text-primary"
-                    : "bg-secondary/15 border-border/40 text-muted-foreground hover:bg-secondary/25"
-                }`}
-              >
-                <Info className="w-4 h-4 inline mr-1" /> About
-              </button>
-
-              <button
-                onClick={() => setTab("stats")}
-                className={`px-4 py-2 rounded-xl text-sm border transition ${
-                  tab === "stats"
-                    ? "bg-primary/15 border-primary/30 text-primary"
-                    : "bg-secondary/15 border-border/40 text-muted-foreground hover:bg-secondary/25"
-                }`}
-              >
-                <BarChart3 className="w-4 h-4 inline mr-1" /> Stats
-              </button>
+            <div className="mt-5">
+              <div className="text-xs text-muted-foreground mb-1">Level progress</div>
+              <div className="h-2 rounded-full bg-secondary/40 overflow-hidden">
+                <div
+                  className="h-full bg-primary"
+                  style={{ width: `${Math.round(pct * 100)}%` }}
+                />
+              </div>
             </div>
-          </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="stats"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="glass-card p-6 rounded-3xl"
+          >
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4" />
+              Stats
+            </h3>
 
-          {/* tab content */}
-          <div className="mt-4">
-            <AnimatePresence mode="wait">
-              {tab === "about" ? (
-                <motion.div
-                  key="about"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.22 }}
-                  className="space-y-3"
-                >
-                  <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40">
-                    <p className="text-xs text-muted-foreground mb-1">Bio</p>
-                    <p className="text-sm leading-relaxed text-foreground/95">
-                      {p.bio?.trim() ? p.bio : "No bio yet."}
-                    </p>
-                  </div>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div className="rounded-2xl border bg-secondary/10 border-border/40 p-4">
+                <div className="text-xs text-muted-foreground">Total minutes</div>
+                <div className="text-lg font-semibold">{totalMinutes}</div>
+              </div>
 
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40">
-                      <p className="text-xs text-muted-foreground mb-1">Member since</p>
-                      <p className="text-sm font-semibold">{fmtMemberSince(p.createdAt)}</p>
-                    </div>
+              <div className="rounded-2xl border bg-secondary/10 border-border/40 p-4">
+                <div className="text-xs text-muted-foreground">Weekly minutes</div>
+                <div className="text-lg font-semibold">{weeklyMinutes}</div>
+              </div>
 
-                    <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40">
-                      <p className="text-xs text-muted-foreground mb-1">Focus vibe</p>
-                      <p className="text-sm font-semibold">
-                        {weeklyMinutes >= 240 ? "Serious grinder 🔥" : weeklyMinutes >= 60 ? "Consistent" : "Warming up"}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">(based on weekly minutes)</p>
-                    </div>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="stats"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.22 }}
-                  className="space-y-3"
-                >
-                  {/* XP + progress */}
-                  <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Trophy className="w-4 h-4" /> XP
-                      </div>
-                      <div className="text-sm font-semibold text-primary">{xp}</div>
-                    </div>
+              <div className="rounded-2xl border bg-secondary/10 border-border/40 p-4">
+                <div className="text-xs text-muted-foreground">Streak</div>
+                <div className="text-lg font-semibold">{streak}</div>
+              </div>
+            </div>
 
-                    <div className="mt-3 h-2 w-full rounded-full bg-secondary/25 overflow-hidden">
-                      <div className="h-full rounded-full bg-primary/80 transition-all" style={{ width: `${pct}%` }} />
-                    </div>
-
-                    <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Level {level}</span>
-                      <span>{Math.round(pct)}% to next</span>
-                    </div>
-                  </div>
-
-                  <div className="grid sm:grid-cols-3 gap-3">
-                    <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Timer className="w-4 h-4" /> Total Focus
-                      </div>
-                      <div className="mt-2 text-2xl font-extrabold text-primary">{totalMinutes}</div>
-                      <div className="text-xs text-muted-foreground">minutes</div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Flame className="w-4 h-4" /> Weekly Focus
-                      </div>
-                      <div className="mt-2 text-2xl font-extrabold text-primary">{weeklyMinutes}</div>
-                      <div className="text-xs text-muted-foreground">minutes</div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Flame className="w-4 h-4" /> Streak
-                      </div>
-                      <div className="mt-2 text-2xl font-extrabold text-primary">{streak}</div>
-                      <div className="text-xs text-muted-foreground">days</div>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    Next upgrade: inventory + unlocking decorations with coins. People will grind study minutes just to get a glowing frame. Humans are predictable. 🙂
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      </motion.div>
+            <p className="text-xs text-muted-foreground mt-4">
+              Next upgrade: inventory + unlocking decorations with coins. People will grind study minutes just to get a glowing frame. Humans are predictable. 🙂
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
-                        }
+}

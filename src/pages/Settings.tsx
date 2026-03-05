@@ -28,6 +28,9 @@ type ProfileDoc = {
   displayName?: string;
   bio?: string;
   status?: string;
+  username?: string;
+  pfp?: string;
+  photoURL?: string;
   cosmetics?: {
     decoration?: string;
     effect?: string;
@@ -73,7 +76,6 @@ const LABELS = {
 
 function safeBg(url: string) {
   const u = (url || "").trim();
-  // Avoid weirdness like `javascript:`. Keep it simple.
   if (!u) return "";
   if (/^https?:\/\//i.test(u)) return u;
   return "";
@@ -94,6 +96,7 @@ export default function Settings() {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [status, setStatus] = useState("");
+  const [pfpUrl, setPfpUrl] = useState("");
 
   const [decoration, setDecoration] = useState<string>("none");
   const [effect, setEffect] = useState<string>("none");
@@ -102,6 +105,7 @@ export default function Settings() {
   const [bannerUrl, setBannerUrl] = useState<string>("");
 
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [uploadingPfp, setUploadingPfp] = useState(false);
 
   const themeOptions = useMemo(
     () => THEMES.map((t) => ({ id: t.id, name: t.name })),
@@ -124,6 +128,7 @@ export default function Settings() {
         setDisplayName(data.displayName ?? (user.displayName || ""));
         setBio(data.bio ?? "");
         setStatus(data.status ?? "");
+        setPfpUrl((data.pfp ?? data.photoURL ?? user.photoURL ?? "") as string);
 
         setDecoration(data.cosmetics?.decoration ?? "none");
         setEffect(data.cosmetics?.effect ?? "none");
@@ -151,6 +156,11 @@ export default function Settings() {
         displayName: displayName.trim().slice(0, 32),
         bio: bio.trim().slice(0, 160),
         status: status.trim().slice(0, 48),
+
+        // ✅ PFP saved here (both keys for compatibility across pages)
+        pfp: pfpUrl.trim().slice(0, 500),
+        photoURL: pfpUrl.trim().slice(0, 500),
+
         cosmetics: {
           decoration,
           effect,
@@ -205,14 +215,10 @@ export default function Settings() {
               <div>
                 <h2 className="text-base font-semibold">Profile</h2>
                 <p className="text-xs text-muted-foreground">
-                  Display name, bio, and status.
+                  Profile photo, display name, bio, and status.
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                className="-mr-2"
-                onClick={() => nav(-1)}
-              >
+              <Button variant="ghost" className="-mr-2" onClick={() => nav(-1)}>
                 Back
               </Button>
             </div>
@@ -220,6 +226,100 @@ export default function Settings() {
             <Separator className="my-4" />
 
             <div className="grid gap-4">
+              {/* ✅ PFP upload ABOVE name */}
+              <div className="grid gap-2">
+                <Label>Profile picture</Label>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-secondary/30 ring-1 ring-white/10">
+                      {safeBg(pfpUrl) ? (
+                        <img
+                          src={safeBg(pfpUrl)}
+                          alt="pfp preview"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-lg font-bold text-muted-foreground">
+                          {(displayName || user?.email || "U")
+                            .trim()
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate">
+                        {displayName || "Your profile"}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        This is what others see.
+                      </div>
+                    </div>
+                  </div>
+
+                  <input
+                    id="pfpUpload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingPfp}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      e.currentTarget.value = "";
+                      if (!file) return;
+
+                      setUploadingPfp(true);
+                      try {
+                        const up = await uploadToCloudinary(file, {
+                          folder: "study-zen/pfp",
+                          maxBytes: 1024 * 1024, // 1MB
+                        });
+                        setPfpUrl(up.secureUrl);
+                        toast.success("Profile photo uploaded. Hit Save to apply.");
+                      } catch (err: any) {
+                        console.error(err);
+                        toast.error(err?.message || "Profile photo upload failed.");
+                      } finally {
+                        setUploadingPfp(false);
+                      }
+                    }}
+                  />
+
+                  <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full sm:w-auto"
+                      disabled={uploadingPfp}
+                      onClick={() => {
+                        const el = document.getElementById(
+                          "pfpUpload"
+                        ) as HTMLInputElement | null;
+                        el?.click();
+                      }}
+                    >
+                      {uploadingPfp ? "Uploading…" : "Upload photo"}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="w-full sm:w-auto"
+                      disabled={uploadingPfp || !pfpUrl.trim()}
+                      onClick={() => setPfpUrl("")}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Cloudinary upload. Max 1MB.
+                </p>
+              </div>
+
               <div className="grid gap-2">
                 <Label htmlFor="displayName">Display name</Label>
                 <Input
@@ -259,7 +359,7 @@ export default function Settings() {
           <Card className="p-4">
             <h2 className="text-base font-semibold">Appearance</h2>
             <p className="text-xs text-muted-foreground">
-              Your actual themes. Not that “Kenta OS / Lemon OS” nonsense.
+              Themes that change your vibe without breaking the app.
             </p>
 
             <Separator className="my-4" />
@@ -296,12 +396,8 @@ export default function Settings() {
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-xl bg-primary/20 ring-1 ring-white/10" />
                       <div>
-                        <div className="text-sm font-semibold">
-                          {activeTheme.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Current theme
-                        </div>
+                        <div className="text-sm font-semibold">{activeTheme.name}</div>
+                        <div className="text-xs text-muted-foreground">Current theme</div>
                       </div>
                     </div>
                     <div className="mt-3 grid gap-2">
@@ -311,9 +407,7 @@ export default function Settings() {
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-secondary/30 p-4">
-                    <div className="text-xs text-muted-foreground">
-                      Quick swap
-                    </div>
+                    <div className="text-xs text-muted-foreground">Quick swap</div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {THEMES.slice(0, 4).map((t) => (
                         <Button
@@ -336,7 +430,7 @@ export default function Settings() {
           <Card className="p-4">
             <h2 className="text-base font-semibold">✨ Profile Cosmetics</h2>
             <p className="text-xs text-muted-foreground">
-              Decorations, effects, nameplates. Make your profile actually fun to look at.
+              Decorations, effects, nameplates. And a preview that actually looks like your profile.
             </p>
 
             <Separator className="my-4" />
@@ -411,6 +505,7 @@ export default function Settings() {
               {/* Live preview */}
               <div className="grid gap-2">
                 <Label>Live preview</Label>
+
                 <div
                   className="relative overflow-hidden rounded-2xl border border-white/10 bg-secondary/30"
                   style={{
@@ -421,10 +516,8 @@ export default function Settings() {
                     backgroundPosition: "center",
                   }}
                 >
-                  {/* Dark overlay so any banner stays readable */}
                   <div className="absolute inset-0 bg-black/45" />
 
-                  {/* Effect layer */}
                   {effect !== "none" && (
                     <div className="absolute inset-0">
                       {effect === "aura" && (
@@ -475,13 +568,11 @@ export default function Settings() {
                     </div>
                   )}
 
-                  {/* Content */}
                   <div className="relative p-4">
                     <div className="flex items-center gap-3">
-                      {/* Avatar + ring */}
                       <div
                         className={cn(
-                          "relative h-14 w-14 rounded-2xl bg-primary/20 ring-1 ring-white/10 flex items-center justify-center",
+                          "relative h-14 w-14 rounded-2xl bg-primary/20 ring-1 ring-white/10 flex items-center justify-center overflow-hidden",
                           ring === "glow" &&
                             "shadow-[0_0_18px_rgba(120,200,255,0.55)]",
                           ring === "pixel" && "border border-white/25"
@@ -490,15 +581,23 @@ export default function Settings() {
                         {ring === "soft" && (
                           <div className="absolute -inset-1 rounded-[18px] bg-white/10 blur-sm" />
                         )}
-                        <span className="relative text-lg font-bold">
-                          {(displayName || user?.email || "U")
-                            .trim()
-                            .charAt(0)
-                            .toUpperCase()}
-                        </span>
+
+                        {safeBg(pfpUrl) ? (
+                          <img
+                            src={safeBg(pfpUrl)}
+                            alt="pfp"
+                            className="relative h-full w-full rounded-2xl object-cover"
+                          />
+                        ) : (
+                          <span className="relative text-lg font-bold">
+                            {(displayName || user?.email || "U")
+                              .trim()
+                              .charAt(0)
+                              .toUpperCase()}
+                          </span>
+                        )}
                       </div>
 
-                      {/* Nameplate + status */}
                       <div className="min-w-0">
                         <div
                           className={cn(
@@ -511,9 +610,8 @@ export default function Settings() {
                               "bg-blue-500/15 text-blue-200 shadow-[0_0_14px_rgba(59,130,246,0.18)]"
                           )}
                         >
-                          <span className="truncate">
-                            {displayName || "Preview User"}
-                          </span>
+                          <span className="truncate">{displayName || "Preview User"}</span>
+
                           {decoration !== "none" && (
                             <span className="text-xs text-white/75">
                               •{" "}
@@ -523,19 +621,22 @@ export default function Settings() {
                             </span>
                           )}
                         </div>
+
                         <div className="mt-1 truncate text-xs text-white/70">
                           {status || "Focused. Unbothered. Studying."}
+                        </div>
+
+                        <div className="mt-1 line-clamp-2 text-[11px] text-white/65">
+                          {bio || "No bio yet."}
                         </div>
                       </div>
                     </div>
 
-                    {/* Bottom tags */}
                     <div className="mt-3 flex flex-wrap gap-2">
                       {effect !== "none" && (
                         <span className="rounded-full bg-white/10 px-2 py-1 text-[11px] text-white/75 ring-1 ring-white/10">
                           Effect:{" "}
-                          {LABELS.effect[effect as keyof typeof LABELS.effect] ||
-                            effect}
+                          {LABELS.effect[effect as keyof typeof LABELS.effect] || effect}
                         </span>
                       )}
                       {ring !== "none" && (
@@ -547,9 +648,8 @@ export default function Settings() {
                       {nameplate !== "none" && (
                         <span className="rounded-full bg-white/10 px-2 py-1 text-[11px] text-white/75 ring-1 ring-white/10">
                           Nameplate:{" "}
-                          {LABELS.nameplate[
-                            nameplate as keyof typeof LABELS.nameplate
-                          ] || nameplate}
+                          {LABELS.nameplate[nameplate as keyof typeof LABELS.nameplate] ||
+                            nameplate}
                         </span>
                       )}
                     </div>
@@ -570,11 +670,7 @@ export default function Settings() {
                   onChange={(e) => setBannerUrl(e.target.value)}
                   placeholder="https://…"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Optional. Used on your profile header.
-                </p>
 
-                {/* Upload banner via Cloudinary (no Firebase Storage needed) */}
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                   <input
                     id="bannerUpload"
@@ -584,7 +680,6 @@ export default function Settings() {
                     disabled={uploadingBanner}
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
-                      // allow selecting the same file again later
                       e.currentTarget.value = "";
                       if (!file) return;
 
@@ -643,6 +738,7 @@ export default function Settings() {
             <p className="text-xs text-muted-foreground">
               The boring but necessary buttons.
             </p>
+
             <Separator className="my-4" />
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

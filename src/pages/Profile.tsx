@@ -3,14 +3,13 @@ import { Link, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
-  BarChart3,
   Copy,
-  Crown,
   Flame,
-  Info,
-  Sparkles,
   Timer,
   Trophy,
+  Sparkles,
+  BarChart3,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
@@ -32,13 +31,12 @@ type ProfileDoc = {
   photoURL?: string;
   bio?: string;
   role?: "owner" | "member";
-
   status?: string;
 
-  // NEW format
+  // new format
   cosmetics?: CosmeticsBlock;
 
-  // OLD format fallback
+  // old fallback
   bannerUrl?: string;
   decoration?: string;
   ring?: string;
@@ -56,42 +54,46 @@ type StatsDoc = {
 };
 
 function dice(seed: string) {
-  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
-    seed || "user"
-  )}`;
+  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed || "user")}`;
 }
 
-function hashString(s: string) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
+function safeUrl(u: string) {
+  const s = (u || "").trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  return "";
+}
+
+function hashString(str: string) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
 }
 
 function levelFromXp(xp: number) {
-  const lvl = Math.floor(Math.sqrt(Math.max(0, xp) / 100)) + 1;
-  const base = (lvl - 1) * (lvl - 1) * 100;
-  const next = lvl * lvl * 100;
-  const pct = next === base ? 0 : Math.min(1, (xp - base) / (next - base));
+  const perLevel = 250;
+  const lvl = Math.floor((xp || 0) / perLevel) + 1;
+  const into = (xp || 0) % perLevel;
+  const pct = Math.min(100, Math.max(0, (into / perLevel) * 100));
   return { level: lvl, pct };
 }
 
 function badgeTier(xp: number) {
-  if (xp >= 10000) return { label: "Legend", tone: "bg-yellow-500/15 border-yellow-500/25 text-yellow-200" };
-  if (xp >= 5000) return { label: "Elite", tone: "bg-violet-500/12 border-violet-500/25 text-violet-200" };
-  if (xp >= 2000) return { label: "Grinder", tone: "bg-sky-500/12 border-sky-500/25 text-sky-200" };
-  if (xp >= 750) return { label: "Rising", tone: "bg-emerald-500/12 border-emerald-500/25 text-emerald-200" };
-  return { label: "Fresh", tone: "bg-secondary/25 border-border/40 text-muted-foreground" };
+  if (xp >= 10000) return { label: "Legend", cls: "bg-yellow-500/15 border-yellow-500/25 text-yellow-200" };
+  if (xp >= 5000) return { label: "Elite", cls: "bg-violet-500/12 border-violet-500/25 text-violet-200" };
+  if (xp >= 2000) return { label: "Grinder", cls: "bg-sky-500/12 border-sky-500/25 text-sky-200" };
+  if (xp >= 750) return { label: "Rising", cls: "bg-emerald-500/12 border-emerald-500/25 text-emerald-200" };
+  return { label: "Fresh", cls: "bg-secondary/25 border-border/40 text-muted-foreground" };
 }
 
 function fmtMemberSince(createdAt: any) {
   try {
     const d = createdAt?.toDate ? createdAt.toDate() : null;
     if (!d) return "—";
-    return d.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   } catch {
     return "—";
   }
@@ -99,225 +101,102 @@ function fmtMemberSince(createdAt: any) {
 
 /**
  * Normalize cosmetics:
- * - Prefer NEW: p.cosmetics.*
- * - Fallback to OLD: p.*
- * - Map new ids (from Settings) into existing visual system
+ * - prefer new: p.cosmetics.*
+ * - fallback to old: p.*
+ * - map Settings ids -> profile visuals
  */
 function normalizeCosmetics(p: ProfileDoc) {
   const block = p.cosmetics || {};
 
-  const decorationRaw = (block.decoration ?? p.decoration ?? "none").toString();
-  const effectRaw = (block.effect ?? p.effect ?? "none").toString();
-  const ringRaw = (block.ring ?? p.ring ?? "none").toString();
-  const nameplateRaw = (block.nameplate ?? p.nameplate ?? "soft").toString();
-  const bannerUrl = (block.bannerUrl ?? p.bannerUrl ?? "").toString();
+  const decorationRaw = String(block.decoration ?? p.decoration ?? "none");
+  const effectRaw = String(block.effect ?? p.effect ?? "none");
+  const ringRaw = String(block.ring ?? p.ring ?? "none");
+  const nameplateRaw = String(block.nameplate ?? p.nameplate ?? "soft");
+  const bannerUrl = String(block.bannerUrl ?? p.bannerUrl ?? "");
 
-  // Map decoration ids
+  // decoration ids coming from Settings
   const decoration =
     decorationRaw === "sparkle" ? "spark" :
-    decorationRaw === "hearts" ? "heart" :
+    decorationRaw === "hearts" ? "hearts" :
     decorationRaw === "baker-bear" ? "baker-bear" :
     decorationRaw;
 
-  // Map effect ids
+  // effect ids coming from Settings
   const effect =
     effectRaw === "aura" ? "aurora" :
-    effectRaw === "butterfly-haven" ? "sparkles" :
+    effectRaw === "bubbles" ? "bubbles" :
+    effectRaw === "butterfly-haven" ? "butterflies" :
     effectRaw;
 
-  // Map ring ids
+  // ring ids coming from Settings
   const ring =
     ringRaw === "glow" ? "neon" :
-    ringRaw === "pixel" ? "focus" :
-    ringRaw === "soft" ? "aura" :
+    ringRaw === "pixel" ? "pixel" :
+    ringRaw === "soft" ? "soft" :
     ringRaw;
 
-  // Map nameplate ids
+  // nameplate ids coming from Settings
   const nameplate =
-    nameplateRaw === "magic-hearts-blue" ? "neon" :
+    nameplateRaw === "magic-hearts-blue" ? "magic-hearts-blue" :
     nameplateRaw;
 
   return { decoration, effect, ring, nameplate, bannerUrl };
 }
 
-function ringStyle(kind: string, seed: string) {
-  const h = hashString(seed);
-  const hue = h % 360;
+/* ------------------ VISUAL SYSTEM ------------------ */
 
+function bannerGradient(seed: string) {
+  const h = hashString(seed) % 360;
+  const h2 = (h + 65) % 360;
+  const h3 = (h + 135) % 360;
+
+  return `
+    radial-gradient(1000px circle at 18% 18%, hsla(${h}, 90%, 55%, 0.28), transparent 55%),
+    radial-gradient(900px circle at 82% 30%, hsla(${h2}, 90%, 55%, 0.24), transparent 60%),
+    radial-gradient(700px circle at 55% 110%, hsla(${h3}, 90%, 55%, 0.20), transparent 60%),
+    linear-gradient(180deg, rgba(10,12,18,0.92), rgba(6,7,11,0.96))
+  `;
+}
+
+function ringClasses(kind: string) {
   switch (kind) {
-    case "royal":
-      return {
-        ring: `conic-gradient(from 180deg, hsla(45,95%,55%,0.95), hsla(330,85%,65%,0.90), hsla(210,90%,60%,0.90), hsla(45,95%,55%,0.95))`,
-        glow: "shadow-[0_0_34px_rgba(255,200,60,0.22)]",
-        icon: <Crown className="w-3.5 h-3.5 text-yellow-300" />,
-      };
     case "neon":
       return {
-        ring: `conic-gradient(from 180deg, hsla(175,100%,50%,0.95), hsla(265,90%,65%,0.9), hsla(330,85%,60%,0.9), hsla(175,100%,50%,0.95))`,
-        glow: "shadow-[0_0_34px_rgba(0,255,204,0.20)]",
-        icon: <Sparkles className="w-3.5 h-3.5 text-primary" />,
+        ringBg:
+          "conic-gradient(from 180deg, rgba(0,255,204,0.95), rgba(178,82,255,0.88), rgba(255,80,170,0.82), rgba(0,255,204,0.95))",
+        glow: "shadow-[0_0_40px_rgba(0,255,204,0.20)]",
       };
-    case "focus":
+    case "pixel":
       return {
-        ring: `conic-gradient(from 180deg, hsla(${hue},90%,60%,0.9), hsla(${(hue + 90) % 360},90%,60%,0.85), hsla(${(hue + 180) % 360},90%,60%,0.85), hsla(${hue},90%,60%,0.9))`,
-        glow: "shadow-[0_0_26px_rgba(120,200,255,0.18)]",
-        icon: <Sparkles className="w-3.5 h-3.5 text-sky-300" />,
+        ringBg:
+          "conic-gradient(from 180deg, rgba(120,200,255,0.9), rgba(99,102,241,0.75), rgba(244,63,94,0.55), rgba(120,200,255,0.9))",
+        glow: "shadow-[0_0_32px_rgba(120,200,255,0.16)]",
       };
-    case "aura":
+    case "soft":
       return {
-        ring: `conic-gradient(from 180deg, hsla(${hue},90%,60%,0.85), hsla(${(hue + 120) % 360},90%,60%,0.80), hsla(${(hue + 240) % 360},90%,60%,0.80), hsla(${hue},90%,60%,0.85))`,
-        glow: "shadow-[0_0_28px_rgba(160,120,255,0.16)]",
-        icon: <Sparkles className="w-3.5 h-3.5 text-violet-300" />,
+        ringBg: "linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06))",
+        glow: "shadow-[0_0_22px_rgba(255,255,255,0.06)]",
       };
-    case "none":
     default:
       return {
-        ring: `linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))`,
+        ringBg: "linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06))",
         glow: "",
-        icon: <Sparkles className="w-3.5 h-3.5 text-muted-foreground" />,
       };
   }
 }
 
-function nameplateClass(kind: string) {
+function nameplateClasses(kind: string) {
   switch (kind) {
     case "neon":
       return "bg-primary/10 border-primary/25 shadow-[0_0_30px_rgba(20,184,166,0.16)]";
     case "blueprint":
       return "bg-sky-500/10 border-sky-500/25 shadow-[0_0_28px_rgba(56,189,248,0.14)]";
+    case "magic-hearts-blue":
+      return "bg-blue-500/10 border-blue-500/25 shadow-[0_0_28px_rgba(59,130,246,0.14)]";
     case "soft":
-      return "bg-secondary/15 border-border/40 shadow-[0_0_20px_rgba(255,255,255,0.06)]";
-    case "none":
     default:
-      return "bg-secondary/10 border-border/40";
+      return "bg-secondary/15 border-border/40 shadow-[0_0_20px_rgba(255,255,255,0.06)]";
   }
-}
-
-function DecorationOverlay({ kind }: { kind: string }) {
-  if (!kind || kind === "none") return null;
-
-  const base = "absolute -inset-2 pointer-events-none opacity-90";
-  const float = "decor-float";
-
-  if (kind === "spark") {
-    return (
-      <div className={`${base} ${float}`}>
-        <svg viewBox="0 0 120 120" className="w-full h-full">
-          <defs>
-            <radialGradient id="g1" cx="50%" cy="50%" r="60%">
-              <stop offset="0%" stopColor="rgba(20,184,166,0.65)" />
-              <stop offset="55%" stopColor="rgba(99,102,241,0.35)" />
-              <stop offset="100%" stopColor="rgba(0,0,0,0)" />
-            </radialGradient>
-          </defs>
-          <circle cx="60" cy="60" r="55" fill="url(#g1)" />
-          <circle cx="20" cy="35" r="3" fill="rgba(255,255,255,0.7)" />
-          <circle cx="92" cy="30" r="2.5" fill="rgba(255,255,255,0.6)" />
-          <circle cx="95" cy="86" r="3.5" fill="rgba(255,255,255,0.55)" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (kind === "coffee") {
-    return (
-      <div className={`${base} ${float}`}>
-        <svg viewBox="0 0 120 120" className="w-full h-full">
-          <path
-            d="M35 75c0 10 7 18 25 18s25-8 25-18H35z"
-            fill="rgba(255,255,255,0.12)"
-          />
-          <path
-            d="M40 55h40c3 0 5 2 5 5v10c0 10-10 20-25 20S35 80 35 70V60c0-3 2-5 5-5z"
-            fill="rgba(255,255,255,0.18)"
-          />
-          <path
-            d="M84 60h6c6 0 10 4 10 10s-4 10-10 10h-7"
-            stroke="rgba(255,255,255,0.25)"
-            strokeWidth="4"
-            fill="none"
-          />
-          <path
-            d="M55 40c-6 6 6 10 0 16"
-            stroke="rgba(255,255,255,0.25)"
-            strokeWidth="3"
-            fill="none"
-            strokeLinecap="round"
-          />
-          <path
-            d="M70 40c-6 6 6 10 0 16"
-            stroke="rgba(255,255,255,0.25)"
-            strokeWidth="3"
-            fill="none"
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
-    );
-  }
-
-  if (kind === "stars") {
-    return (
-      <div className={`${base} ${float}`}>
-        <svg viewBox="0 0 120 120" className="w-full h-full">
-          <g fill="rgba(255,255,255,0.65)">
-            <path d="M60 18l3 9 9 3-9 3-3 9-3-9-9-3 9-3 3-9z" />
-            <path d="M24 52l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6z" opacity="0.9" />
-            <path d="M96 66l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6z" opacity="0.8" />
-            <circle cx="86" cy="30" r="2.5" opacity="0.8" />
-            <circle cx="30" cy="86" r="3" opacity="0.7" />
-          </g>
-        </svg>
-      </div>
-    );
-  }
-
-  if (kind === "leaf") {
-    return (
-      <div className={`${base} ${float}`}>
-        <svg viewBox="0 0 120 120" className="w-full h-full">
-          <path
-            d="M85 30c-22 4-42 20-48 42 18-8 33-3 45-16 10-10 7-20 3-26z"
-            fill="rgba(34,197,94,0.22)"
-          />
-          <path
-            d="M40 80c12-18 25-28 46-40"
-            stroke="rgba(34,197,94,0.35)"
-            strokeWidth="3"
-            fill="none"
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
-    );
-  }
-
-  if (kind === "heart") {
-    return (
-      <div className={`${base} ${float}`}>
-        <svg viewBox="0 0 120 120" className="w-full h-full">
-          <path
-            d="M60 95s-30-18-38-36c-6-14 2-28 16-30 10-1 18 5 22 12 4-7 12-13 22-12 14 2 22 16 16 30-8 18-38 36-38 36z"
-            fill="rgba(244,63,94,0.22)"
-          />
-          <circle cx="30" cy="30" r="2.5" fill="rgba(255,255,255,0.55)" />
-          <circle cx="92" cy="44" r="2" fill="rgba(255,255,255,0.45)" />
-        </svg>
-      </div>
-    );
-  }
-
-  // NEW: baker-bear (simple cute stamp)
-  if (kind === "baker-bear") {
-    return (
-      <div className={`${base} ${float}`}>
-        <div className="absolute top-2 right-2 text-xl opacity-75">🐻‍❄️</div>
-        <div className="absolute bottom-3 left-3 text-lg opacity-55">🥐</div>
-      </div>
-    );
-  }
-
-  return null;
 }
 
 function EffectLayer({ effect }: { effect: string }) {
@@ -325,34 +204,118 @@ function EffectLayer({ effect }: { effect: string }) {
 
   if (effect === "aurora") {
     return (
-      <div className="absolute inset-0 pointer-events-none opacity-70">
-        <div className="aurora-one" />
-        <div className="aurora-two" />
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="effect-aurora-1" />
+        <div className="effect-aurora-2" />
       </div>
     );
   }
 
-  if (effect === "sparkles") {
-    return <div className="absolute inset-0 pointer-events-none opacity-60 sparkle-layer" />;
+  if (effect === "bubbles") {
+    return (
+      <div className="absolute inset-0 pointer-events-none effect-bubbles" />
+    );
   }
 
   if (effect === "scanlines") {
-    return <div className="absolute inset-0 pointer-events-none opacity-30 scanlines" />;
+    return <div className="absolute inset-0 pointer-events-none effect-scanlines" />;
   }
 
-  if (effect === "bubbles") {
-    return <div className="absolute inset-0 pointer-events-none opacity-55 bubbles" />;
+  if (effect === "sparkles") {
+    return <div className="absolute inset-0 pointer-events-none effect-sparkles" />;
+  }
+
+  if (effect === "butterflies") {
+    return (
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="effect-bfly b1">🦋</div>
+        <div className="effect-bfly b2">🦋</div>
+        <div className="effect-bfly b3">🦋</div>
+      </div>
+    );
   }
 
   return null;
 }
 
-function bannerGradient(seed: string) {
-  const h = hashString(seed) % 360;
-  const h2 = (h + 60) % 360;
-  const h3 = (h + 120) % 360;
-  return `linear-gradient(135deg, hsla(${h},90%,55%,0.30), hsla(${h2},90%,55%,0.22), hsla(${h3},90%,55%,0.18))`;
+function DecorationOverlay({ kind }: { kind: string }) {
+  if (!kind || kind === "none") return null;
+
+  if (kind === "spark") {
+    return (
+      <div className="absolute -inset-2 pointer-events-none opacity-90">
+        <svg viewBox="0 0 120 120" className="w-full h-full">
+          <defs>
+            <radialGradient id="sparkG" cx="50%" cy="50%" r="60%">
+              <stop offset="0%" stopColor="rgba(20,184,166,0.65)" />
+              <stop offset="55%" stopColor="rgba(99,102,241,0.35)" />
+              <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+            </radialGradient>
+          </defs>
+          <circle cx="60" cy="60" r="55" fill="url(#sparkG)" />
+          <circle cx="18" cy="34" r="3" fill="rgba(255,255,255,0.75)" />
+          <circle cx="94" cy="28" r="2.5" fill="rgba(255,255,255,0.65)" />
+          <circle cx="96" cy="88" r="3.5" fill="rgba(255,255,255,0.55)" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (kind === "hearts") {
+    return (
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="decor-heart h1">❤</div>
+        <div className="decor-heart h2">❤</div>
+        <div className="decor-heart h3">❤</div>
+      </div>
+    );
+  }
+
+  if (kind === "baker-bear") {
+    return (
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="decor-stamp top-2 right-2">🐻‍❄️</div>
+        <div className="decor-stamp bottom-2 left-2 opacity-60">🥐</div>
+      </div>
+    );
+  }
+
+  if (kind === "coffee") {
+    return (
+      <div className="absolute -inset-2 pointer-events-none opacity-90">
+        <svg viewBox="0 0 120 120" className="w-full h-full">
+          <path d="M40 55h40c3 0 5 2 5 5v10c0 10-10 20-25 20S35 80 35 70V60c0-3 2-5 5-5z" fill="rgba(255,255,255,0.18)" />
+          <path d="M84 60h6c6 0 10 4 10 10s-4 10-10 10h-7" stroke="rgba(255,255,255,0.25)" strokeWidth="4" fill="none" />
+          <path d="M55 40c-6 6 6 10 0 16" stroke="rgba(255,255,255,0.25)" strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M70 40c-6 6 6 10 0 16" stroke="rgba(255,255,255,0.25)" strokeWidth="3" fill="none" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (kind === "stars") {
+    return (
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="decor-star s1">✦</div>
+        <div className="decor-star s2">✦</div>
+        <div className="decor-star s3">✦</div>
+        <div className="decor-star s4">✦</div>
+      </div>
+    );
+  }
+
+  if (kind === "leaf") {
+    return (
+      <div className="absolute inset-0 pointer-events-none opacity-90">
+        <div className="decor-leaf">🍃</div>
+      </div>
+    );
+  }
+
+  return null;
 }
+
+/* ------------------ PAGE ------------------ */
 
 export default function Profile() {
   const { username } = useParams();
@@ -398,15 +361,9 @@ export default function Profile() {
     return (
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="glass-card p-6 rounded-3xl">
-          <p className="text-sm text-muted-foreground">
-            No user found for that username.
-          </p>
-          <Link
-            to="/leaderboard"
-            className="inline-flex items-center gap-2 mt-3 text-sm text-primary underline"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to leaderboard
+          <p className="text-sm text-muted-foreground">No user found for that username.</p>
+          <Link to="/leaderboard" className="inline-flex items-center gap-2 mt-3 text-sm text-primary underline">
+            <ArrowLeft className="w-4 h-4" /> Back to leaderboard
           </Link>
         </div>
       </div>
@@ -424,10 +381,7 @@ export default function Profile() {
   }
 
   const uname = (username || "").toLowerCase().replace(/^@+/, "");
-  const avatar =
-    p.pfp?.trim() ||
-    p.photoURL?.trim() ||
-    dice(p.displayName || uname || "user");
+  const avatar = p.pfp?.trim() || p.photoURL?.trim() || dice(p.displayName || uname || "user");
 
   const xp = Number((s as any)?.xp || 0);
   const totalMinutes = Number((s as any)?.totalMinutes || 0);
@@ -438,12 +392,10 @@ export default function Profile() {
   const tier = badgeTier(xp);
 
   const c = normalizeCosmetics(p);
+  const ring = ringClasses(c.ring || "soft");
 
-  const ring = ringStyle(c.ring || "aura", seed);
-
-  const banner = (c.bannerUrl || "").trim()
-    ? `url('${c.bannerUrl.trim()}')`
-    : bannerGradient(seed);
+  const bannerUrl = safeUrl(c.bannerUrl || "");
+  const banner = bannerUrl ? `url('${bannerUrl}')` : bannerGradient(seed);
 
   const copyProfileLink = async () => {
     const link = `${window.location.origin}/u/${uname}`;
@@ -455,184 +407,277 @@ export default function Profile() {
     }
   };
 
-  const nameplate = nameplateClass(c.nameplate || "soft");
+  const nameplate = nameplateClasses(c.nameplate || "soft");
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-5">
+      {/* CSS for effects/decorations. Lightweight + mobile friendly */}
       <style>{`
-        .decor-float { animation: decorFloat 4.2s ease-in-out infinite; }
-        @keyframes decorFloat { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-4px); } }
-
-        .aurora-one {
-          position: absolute; inset: -30%;
-          background: radial-gradient(circle at 30% 30%, rgba(20,184,166,0.35), transparent 55%),
-                      radial-gradient(circle at 70% 45%, rgba(99,102,241,0.28), transparent 55%),
-                      radial-gradient(circle at 50% 85%, rgba(244,63,94,0.18), transparent 60%);
-          filter: blur(18px);
-          animation: auroraMove 8s ease-in-out infinite;
+        .effect-aurora-1, .effect-aurora-2 { position:absolute; inset:-35%; filter: blur(22px); opacity:.85; }
+        .effect-aurora-1 {
+          background:
+            radial-gradient(circle at 20% 20%, rgba(20,184,166,0.28), transparent 55%),
+            radial-gradient(circle at 75% 30%, rgba(99,102,241,0.22), transparent 58%),
+            radial-gradient(circle at 55% 85%, rgba(244,63,94,0.14), transparent 62%);
+          animation: aurMove1 9s ease-in-out infinite;
         }
-        .aurora-two {
-          position: absolute; inset: -40%;
-          background: radial-gradient(circle at 20% 70%, rgba(56,189,248,0.25), transparent 55%),
-                      radial-gradient(circle at 80% 20%, rgba(168,85,247,0.20), transparent 55%);
-          filter: blur(22px);
-          animation: auroraMove2 10s ease-in-out infinite;
-          opacity: 0.85;
+        .effect-aurora-2 {
+          background:
+            radial-gradient(circle at 25% 70%, rgba(56,189,248,0.20), transparent 55%),
+            radial-gradient(circle at 85% 25%, rgba(168,85,247,0.16), transparent 58%);
+          animation: aurMove2 11s ease-in-out infinite;
         }
-        @keyframes auroraMove { 0%{transform: translate(0,0) scale(1)} 50%{transform: translate(10px,-10px) scale(1.05)} 100%{transform: translate(0,0) scale(1)} }
-        @keyframes auroraMove2 { 0%{transform: translate(0,0) scale(1)} 50%{transform: translate(-10px,12px) scale(1.06)} 100%{transform: translate(0,0) scale(1)} }
+        @keyframes aurMove1 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(12px,-10px) scale(1.06)} }
+        @keyframes aurMove2 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(-10px,12px) scale(1.07)} }
 
-        .scanlines {
+        .effect-sparkles {
+          background-image:
+            radial-gradient(circle at 18% 30%, rgba(255,255,255,0.60) 0 1px, transparent 2px),
+            radial-gradient(circle at 70% 20%, rgba(255,255,255,0.45) 0 1px, transparent 2px),
+            radial-gradient(circle at 58% 72%, rgba(255,255,255,0.35) 0 1px, transparent 2px),
+            radial-gradient(circle at 25% 82%, rgba(255,255,255,0.40) 0 1px, transparent 2px);
+          animation: twinkle 2.8s ease-in-out infinite;
+          opacity:.7;
+        }
+        @keyframes twinkle { 0%,100%{opacity:.35} 50%{opacity:.85} }
+
+        .effect-scanlines {
           background: repeating-linear-gradient(
             to bottom,
-            rgba(255,255,255,0.12),
-            rgba(255,255,255,0.12) 1px,
+            rgba(255,255,255,0.10),
+            rgba(255,255,255,0.10) 1px,
             rgba(0,0,0,0) 3px,
-            rgba(0,0,0,0) 6px
+            rgba(0,0,0,0) 7px
           );
-          animation: scanMove 2.2s linear infinite;
+          opacity:.22;
+          animation: scan 2.6s linear infinite;
+          mix-blend-mode: overlay;
         }
-        @keyframes scanMove { from { background-position: 0 0; } to { background-position: 0 30px; } }
+        @keyframes scan { from{background-position:0 0} to{background-position:0 44px} }
 
-        .sparkle-layer {
-          background:
-            radial-gradient(circle at 22% 30%, rgba(255,255,255,0.55), transparent 35%),
-            radial-gradient(circle at 78% 42%, rgba(255,255,255,0.45), transparent 40%),
-            radial-gradient(circle at 55% 75%, rgba(255,255,255,0.35), transparent 45%);
-          filter: blur(0.4px);
-          animation: sparkleTwinkle 2.6s ease-in-out infinite;
-        }
-        @keyframes sparkleTwinkle { 0%,100%{opacity:0.35} 50%{opacity:0.8} }
-
-        .bubbles {
-          background:
-            radial-gradient(circle at 18% 62%, rgba(255,255,255,0.20), transparent 30%),
-            radial-gradient(circle at 72% 22%, rgba(255,255,255,0.18), transparent 28%),
-            radial-gradient(circle at 56% 72%, rgba(255,255,255,0.14), transparent 30%);
+        .effect-bubbles {
+          background-image:
+            radial-gradient(circle at 18% 62%, rgba(255,255,255,0.18) 0 12px, transparent 13px),
+            radial-gradient(circle at 72% 28%, rgba(255,255,255,0.14) 0 10px, transparent 11px),
+            radial-gradient(circle at 56% 78%, rgba(255,255,255,0.10) 0 16px, transparent 17px);
           filter: blur(0.6px);
-          animation: bubblesDrift 4.8s ease-in-out infinite;
+          animation: bub 6.5s ease-in-out infinite;
         }
-        @keyframes bubblesDrift { 0%,100%{transform: translateY(0)} 50%{transform: translateY(-6px)} }
+        @keyframes bub { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+
+        .effect-bfly { position:absolute; font-size:14px; opacity:.55; animation: bfly 6.8s ease-in-out infinite; }
+        .effect-bfly.b1 { left:12px; top:12px; animation-delay:0ms; }
+        .effect-bfly.b2 { right:14px; top:42%; animation-delay:220ms; }
+        .effect-bfly.b3 { left:42%; bottom:10px; animation-delay:420ms; }
+        @keyframes bfly { 0%,100%{transform:translate(0,0)} 50%{transform:translate(6px,-8px)} }
+
+        .decor-stamp { position:absolute; font-size:18px; filter: drop-shadow(0 8px 18px rgba(0,0,0,0.35)); }
+        .decor-heart { position:absolute; color: rgba(244,63,94,0.70); filter: drop-shadow(0 8px 18px rgba(0,0,0,0.35)); animation: heartFloat 4.2s ease-in-out infinite; }
+        .decor-heart.h1 { left:8px; top:8px; font-size:14px; }
+        .decor-heart.h2 { right:10px; top:16px; font-size:12px; animation-delay:200ms; opacity:.6; }
+        .decor-heart.h3 { right:8px; bottom:8px; font-size:16px; animation-delay:400ms; opacity:.55; }
+        @keyframes heartFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+
+        .decor-star { position:absolute; color: rgba(255,255,255,0.70); filter: drop-shadow(0 10px 18px rgba(0,0,0,0.35)); animation: starTw 3.4s ease-in-out infinite; }
+        .decor-star.s1 { left:10px; top:8px; font-size:14px; }
+        .decor-star.s2 { right:8px; top:10px; font-size:12px; opacity:.65; animation-delay:160ms; }
+        .decor-star.s3 { left:8px; bottom:10px; font-size:12px; opacity:.6; animation-delay:320ms; }
+        .decor-star.s4 { right:12px; bottom:8px; font-size:16px; opacity:.55; animation-delay:480ms; }
+        @keyframes starTw { 0%,100%{opacity:.35; transform:scale(1)} 50%{opacity:.85; transform:scale(1.06)} }
+
+        .decor-leaf { position:absolute; right:10px; bottom:8px; font-size:18px; opacity:.6; filter: drop-shadow(0 10px 18px rgba(0,0,0,0.35)); animation: leafFloat 4.6s ease-in-out infinite; }
+        @keyframes leafFloat { 0%,100%{transform:translate(0,0) rotate(0deg)} 50%{transform:translate(-4px,-6px) rotate(-6deg)} }
       `}</style>
 
-      <div className="glass-card p-6 rounded-3xl overflow-hidden relative">
+      {/* Top mini controls */}
+      <div className="flex items-center justify-between gap-3 px-1">
+        <Link
+          to="/leaderboard"
+          className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition"
+        >
+          <ArrowLeft className="w-4 h-4 inline mr-1" />
+          Back
+        </Link>
+
+        <button
+          onClick={copyProfileLink}
+          className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition"
+          title="Copy profile link"
+        >
+          <Copy className="w-4 h-4 inline mr-1" />
+          Share
+        </button>
+      </div>
+
+      {/* Header Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card overflow-hidden rounded-3xl"
+      >
+        {/* Banner */}
         <div
-          className="absolute inset-0"
+          className="relative h-28 sm:h-40"
           style={{
             backgroundImage: banner,
             backgroundSize: "cover",
             backgroundPosition: "center",
-            opacity: 0.95,
           }}
-        />
-        <EffectLayer effect={c.effect || "none"} />
-        <div className="absolute inset-0 bg-black/35" />
+        >
+          {/* effects */}
+          <EffectLayer effect={c.effect || "none"} />
 
-        <div className="relative">
-          <div className="flex items-center justify-between">
-            <Link
-              to="/leaderboard"
-              className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
+          {/* depth overlays */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/35 to-black/75" />
+          <div
+            className="absolute inset-0 opacity-60"
+            style={{
+              backgroundImage: "var(--bg-pattern-url), var(--bg-noise-url)",
+              backgroundRepeat: "repeat, repeat",
+              backgroundSize: "220px 220px, 160px 160px",
+              mixBlendMode: "overlay",
+            }}
+          />
+        </div>
+
+        {/* Body */}
+        <div className="relative px-4 sm:px-6 pb-5 pt-12 sm:pt-14">
+          {/* Avatar overlap */}
+          <div className="absolute -top-9 sm:-top-12 left-4 sm:left-6">
+            <motion.div
+              whileHover={{ rotate: -1.5, scale: 1.02 }}
+              transition={{ type: "spring", stiffness: 240, damping: 18 }}
+              className={`relative ${ring.glow}`}
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </Link>
-
-            <button
-              onClick={copyProfileLink}
-              className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
-            >
-              <Copy className="w-4 h-4" />
-              Copy profile link
-            </button>
-          </div>
-
-          <div className="mt-6 flex flex-col sm:flex-row sm:items-end gap-4">
-            <div className="relative">
               <div
-                className={`p-[3px] rounded-[22px] ${ring.glow}`}
-                style={{ background: ring.ring }}
-              >
+                className="absolute -inset-1 rounded-[26px]"
+                style={{ background: ring.ringBg }}
+              />
+              <div
+                className="absolute -inset-[6px] rounded-[32px] opacity-35 blur-md"
+                style={{ background: ring.ringBg }}
+              />
+              <div className="relative bg-background rounded-[24px] p-1.5 border border-border/40 overflow-hidden">
                 <img
                   src={avatar}
                   alt="avatar"
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover"
                 />
                 <DecorationOverlay kind={c.decoration || "none"} />
               </div>
-
               <div className="absolute -bottom-2 -right-2 bg-background border border-border/40 rounded-full p-1.5">
-                {ring.icon}
+                <Sparkles className="w-3.5 h-3.5 text-muted-foreground" />
               </div>
-            </div>
+            </motion.div>
+          </div>
 
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className={`px-3 py-1.5 rounded-2xl border ${nameplate}`}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-semibold truncate">
-                      {p.displayName || `@${uname}`}
-                    </span>
-                    {p.role === "owner" && <OwnerBadge />}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    @{uname}
-                  </div>
+          {/* Identity row */}
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="min-w-0">
+              {/* Nameplate */}
+              <div className={`inline-block rounded-2xl border px-3 py-2 ${nameplate}`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <h1 className="text-lg sm:text-xl font-extrabold truncate">
+                    {p.displayName || "User"}
+                  </h1>
+                  {p.role === "owner" && <OwnerBadge />}
                 </div>
-
-                <div className={`px-3 py-1.5 rounded-2xl border ${tier.tone}`}>
-                  <div className="text-xs">Tier</div>
-                  <div className="font-semibold text-sm">{tier.label}</div>
-                </div>
-
-                <div className="px-3 py-1.5 rounded-2xl border bg-secondary/10 border-border/40">
-                  <div className="text-xs text-muted-foreground">Level</div>
-                  <div className="font-semibold text-sm">{level}</div>
-                </div>
+                <p className="text-xs text-muted-foreground truncate">@{uname}</p>
               </div>
 
-              <div className="mt-3 text-sm text-white/90">
-                {p.status || "Focused. Unbothered. Studying."}
+              {/* Status */}
+              <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border bg-secondary/15 border-border/40 text-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-400/80" />
+                <span className="text-muted-foreground">
+                  {p.status?.trim() ? p.status : "Focused. Unbothered. Studying."}
+                </span>
               </div>
 
-              {p.bio && (
-                <div className="mt-2 text-sm text-white/75 leading-relaxed">
+              {/* Bio */}
+              {p.bio?.trim() ? (
+                <p className="mt-3 text-sm text-muted-foreground leading-relaxed max-w-2xl">
                   {p.bio}
-                </div>
-              )}
+                </p>
+              ) : null}
 
-              <div className="mt-4 flex items-center gap-2 text-xs text-white/70">
+              {/* Member since */}
+              <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                 <Info className="w-4 h-4" />
                 Member since {fmtMemberSince(p.createdAt)}
               </div>
             </div>
+
+            {/* Badges compact */}
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <span className={`text-[11px] px-2.5 py-1 rounded-full border ${tier.cls}`}>
+                {tier.label}
+              </span>
+              <span className="text-[11px] px-2.5 py-1 rounded-full border bg-secondary/20 border-border/40 text-muted-foreground">
+                Lvl {level}
+              </span>
+              <span className="text-[11px] px-2.5 py-1 rounded-full border bg-secondary/20 border-border/40 text-muted-foreground">
+                {xp} XP
+              </span>
+            </div>
           </div>
 
-          <div className="mt-6 flex gap-2">
+          {/* Quick Stats row */}
+          <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="rounded-2xl border bg-secondary/10 border-border/40 p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Trophy className="w-4 h-4" /> XP
+              </div>
+              <div className="mt-1 text-base sm:text-lg font-bold text-primary">{xp}</div>
+              <div className="mt-2 h-1.5 rounded-full bg-secondary/25 overflow-hidden">
+                <div className="h-full bg-primary/80" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-secondary/10 border-border/40 p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Timer className="w-4 h-4" /> Total
+              </div>
+              <div className="mt-1 text-base sm:text-lg font-bold text-primary">{totalMinutes}</div>
+              <div className="text-[11px] text-muted-foreground">minutes</div>
+            </div>
+
+            <div className="rounded-2xl border bg-secondary/10 border-border/40 p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Flame className="w-4 h-4" /> Streak
+              </div>
+              <div className="mt-1 text-base sm:text-lg font-bold text-primary">{streak}</div>
+              <div className="text-[11px] text-muted-foreground">days</div>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="mt-4 flex gap-2">
             <button
               onClick={() => setTab("about")}
-              className={`px-4 py-2 rounded-2xl text-sm border transition ${
+              className={`px-4 py-2 rounded-xl text-sm border transition ${
                 tab === "about"
-                  ? "bg-white/15 border-white/20 text-white"
-                  : "bg-black/10 border-white/10 text-white/70 hover:text-white"
+                  ? "bg-primary/15 border-primary/30 text-primary"
+                  : "bg-secondary/15 border-border/40 text-muted-foreground hover:bg-secondary/25"
               }`}
             >
-              About
+              <Info className="w-4 h-4 inline mr-1" /> About
             </button>
+
             <button
               onClick={() => setTab("stats")}
-              className={`px-4 py-2 rounded-2xl text-sm border transition ${
+              className={`px-4 py-2 rounded-xl text-sm border transition ${
                 tab === "stats"
-                  ? "bg-white/15 border-white/20 text-white"
-                  : "bg-black/10 border-white/10 text-white/70 hover:text-white"
+                  ? "bg-primary/15 border-primary/30 text-primary"
+                  : "bg-secondary/15 border-border/40 text-muted-foreground hover:bg-secondary/25"
               }`}
             >
-              Stats
+              <BarChart3 className="w-4 h-4 inline mr-1" /> Stats
             </button>
           </div>
         </div>
-      </div>
+      </motion.div>
 
+      {/* Tab Content */}
       <AnimatePresence mode="wait">
         {tab === "about" ? (
           <motion.div
@@ -640,34 +685,29 @@ export default function Profile() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="glass-card p-6 rounded-3xl"
+            transition={{ duration: 0.2 }}
+            className="glass-card p-5 sm:p-6 rounded-3xl"
           >
             <h3 className="font-semibold mb-3">About</h3>
+
             <div className="grid gap-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <Flame className="w-4 h-4 text-orange-300" />
-                Streak: <span className="text-foreground font-semibold">{streak}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Timer className="w-4 h-4 text-sky-300" />
-                Weekly minutes:{" "}
-                <span className="text-foreground font-semibold">{weeklyMinutes}</span>
+                Weekly minutes: <span className="text-foreground font-semibold">{weeklyMinutes}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-yellow-300" />
-                Total XP: <span className="text-foreground font-semibold">{xp}</span>
+                Level: <span className="text-foreground font-semibold">{level}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Timer className="w-4 h-4 text-sky-300" />
+                Total minutes: <span className="text-foreground font-semibold">{totalMinutes}</span>
               </div>
             </div>
 
-            <div className="mt-5">
-              <div className="text-xs text-muted-foreground mb-1">Level progress</div>
-              <div className="h-2 rounded-full bg-secondary/40 overflow-hidden">
-                <div
-                  className="h-full bg-primary"
-                  style={{ width: `${Math.round(pct * 100)}%` }}
-                />
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              This layout is optimized for mobile first, so it doesn’t feel like a stretched desktop page on phones.
+            </p>
           </motion.div>
         ) : (
           <motion.div
@@ -675,7 +715,8 @@ export default function Profile() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="glass-card p-6 rounded-3xl"
+            transition={{ duration: 0.2 }}
+            className="glass-card p-5 sm:p-6 rounded-3xl"
           >
             <h3 className="font-semibold mb-3 flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
@@ -700,7 +741,7 @@ export default function Profile() {
             </div>
 
             <p className="text-xs text-muted-foreground mt-4">
-              Next upgrade: inventory + unlocking decorations with coins. People will grind study minutes just to get a glowing frame. Humans are predictable. 🙂
+              Next step (optional): make these stats clickable to show weekly breakdown graphs.
             </p>
           </motion.div>
         )}

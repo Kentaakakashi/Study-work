@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { MessageSquarePlus, Send, Tag, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
-import { addDoc, collection, limit, onSnapshot, orderBy, query, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp } from "firebase/firestore";
 
 type Post = {
   id: string;
@@ -14,19 +14,37 @@ type Post = {
   subject: string;
   author: string;
   uid: string;
+  username?: string;
   createdAt?: any;
+};
+
+type ProfileDoc = {
+  displayName?: string;
+  username?: string;
 };
 
 const subjects = ["General", "Mathematics", "Physics", "Chemistry", "Biology", "Computer Science", "English", "History"];
 
 const Community = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const nav = useNavigate();
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState(subjects[0]);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, ProfileDoc>>({});
+
+  const loadProfile = async (uid: string) => {
+    if (!uid) return;
+    if (profiles[uid]) return;
+    try {
+      const snap = await getDoc(doc(db, "profiles", uid));
+      setProfiles((prev) => ({ ...prev, [uid]: (snap.data() as ProfileDoc) || {} }));
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     const postsRef = collection(db, "posts");
@@ -35,8 +53,10 @@ const Community = () => {
       const out: Post[] = [];
       snap.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
       setPosts(out);
+      out.forEach((p) => p.uid && loadProfile(p.uid));
     });
     return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const submit = async () => {
@@ -45,7 +65,8 @@ const Community = () => {
     try {
       await addDoc(collection(db, "posts"), {
         uid: user.uid,
-        author: user.displayName || user.email || "User",
+        author: profile?.displayName || user.displayName || user.email || "User",
+        username: profile?.username || null,
         subject,
         title: title.trim(),
         body: body.trim(),
@@ -125,35 +146,49 @@ const Community = () => {
         {empty ? (
           <p className="text-sm text-muted-foreground">No posts yet. Be the first.</p>
         ) : (
-          posts.map((p, i) => (
-            <motion.button
-              type="button"
-              key={p.id}
-              onClick={() => nav(`/community/${p.id}`)}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(0.2, i * 0.03) }}
-              className="w-full text-left glass-card-hover p-5 rounded-3xl"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h4 className="text-lg font-bold truncate">{p.title}</h4>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    by {p.author} {p.createdAt ? `• ${prettyTime(p.createdAt)}` : ""}
-                  </p>
+          posts.map((p, i) => {
+            const prof = profiles[p.uid] || {};
+            const uname = p.username || prof.username || "";
+            const authorName = prof.displayName || p.author || "User";
+            const authorLine = uname ? (
+              <Link to={`/u/${uname}`} className="hover:underline">
+                {authorName}
+              </Link>
+            ) : (
+              <span>{authorName}</span>
+            );
+
+            return (
+              <motion.button
+                type="button"
+                key={p.id}
+                onClick={() => nav(`/community/${p.id}`)}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(0.2, i * 0.03) }}
+                className="w-full text-left glass-card-hover p-5 rounded-3xl"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h4 className="text-lg font-bold truncate">{p.title}</h4>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      by {authorLine} {p.createdAt ? `• ${prettyTime(p.createdAt)}` : ""}
+                      {uname ? ` • @${uname}` : ""}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 rounded-full border border-border/40 bg-secondary/20 text-xs">
+                      {p.subject}
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="px-3 py-1 rounded-full border border-border/40 bg-secondary/20 text-xs">
-                    {p.subject}
-                  </span>
-                  <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                </div>
-              </div>
-
-              <p className="mt-3 whitespace-pre-wrap leading-relaxed text-sm line-clamp-3">{p.body}</p>
-            </motion.button>
-          ))
+                <p className="mt-3 whitespace-pre-wrap leading-relaxed text-sm line-clamp-3">{p.body}</p>
+              </motion.button>
+            );
+          })
         )}
       </div>
     </div>

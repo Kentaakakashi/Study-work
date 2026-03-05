@@ -1,31 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { User, Palette, Shield, LogOut, Check } from "lucide-react";
+import { User, Palette, Shield, LogOut, Check, Zap, Type, SquareDashedMousePointer } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-
-const themes = [
-  { key: "neon", label: "Neon", desc: "Cyan & electric", preview: "from-cyan-500 to-purple-500" },
-  { key: "lofi", label: "Lofi", desc: "Warm & earthy", preview: "from-green-600 to-amber-600" },
-  { key: "sakura", label: "Sakura", desc: "Soft pinks", preview: "from-pink-500 to-purple-400" },
-];
+import { THEMES, normalizeThemeId, type ThemeId } from "@/theme/themes";
+import { useTheme } from "@/theme/ThemeProvider";
 
 function normUsername(s: string) {
-  return (s || "").toLowerCase().replace(/\s+/g, "").replace(/[^a-z0-9_\.]/g, "");
+  return (s || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9_\.]/g, "");
 }
 
 const Settings = () => {
   const { user, logout } = useAuth();
+  const { theme, setThemeId } = useTheme();
+
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [pfpUrl, setPfpUrl] = useState("");
-  const [currentTheme, setCurrentTheme] = useState(() => localStorage.getItem("theme") || "neon");
   const [hideOnline, setHideOnline] = useState(false);
   const [hideStats, setHideStats] = useState(false);
   const [saving, setSaving] = useState(false);
   const [origUsername, setOrigUsername] = useState("");
+
+  const currentThemeId = theme.id;
+
+  const themes = useMemo(() => THEMES, []);
 
   useEffect(() => {
     if (!user) return;
@@ -38,19 +42,15 @@ const Settings = () => {
       setPfpUrl(p.pfp || p.photoURL || user.photoURL || "");
       setHideOnline(!!p.hideOnline);
       setHideStats(!!p.hideStats);
+
+      // If profile has a saved theme, sync it locally (with back-compat).
+      if (p.theme && typeof p.theme === "string") {
+        const normalized = normalizeThemeId(p.theme);
+        if (normalized && normalized !== currentThemeId) setThemeId(normalized as ThemeId);
+      }
     })().catch(() => {});
-  }, [user]);
-
-  const applyTheme = (theme: string) => {
-    setCurrentTheme(theme);
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-  };
-
-  useEffect(() => {
-    applyTheme(currentTheme);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user]);
 
   const save = async () => {
     if (!user) return toast("Login required");
@@ -85,7 +85,7 @@ const Settings = () => {
           pfp: pfpUrl.trim(),
           hideOnline,
           hideStats,
-          theme: currentTheme,
+          theme: currentThemeId,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -101,7 +101,7 @@ const Settings = () => {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-2xl">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6">
         <div className="flex items-center gap-2 mb-5">
           <User className="w-5 h-5 text-primary" />
           <h3 className="font-semibold">Profile</h3>
@@ -120,7 +120,7 @@ const Settings = () => {
             <p className="font-semibold">{displayName || "User"}</p>
             <p className="text-sm text-muted-foreground">@{username || "set-username"}</p>
           </div>
-          <button onClick={save} disabled={saving} className="glow-button px-4 py-2 rounded-xl font-semibold disabled:opacity-50">
+          <button onClick={save} disabled={saving} className="glow-button px-4 py-2 font-semibold disabled:opacity-50">
             <Check className="w-4 h-4 inline mr-1" /> Save
           </button>
         </div>
@@ -159,37 +159,97 @@ const Settings = () => {
         </div>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass-card p-6 rounded-2xl">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass-card p-6">
         <div className="flex items-center gap-2 mb-5">
           <Palette className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold">Theme</h3>
+          <h3 className="font-semibold">Themes</h3>
         </div>
 
-        <div className="grid sm:grid-cols-3 gap-3">
-          {themes.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => applyTheme(t.key)}
-              className={`p-4 rounded-2xl border transition text-left ${
-                currentTheme === t.key ? "border-primary/40 bg-primary/10" : "border-border/50 bg-secondary/20 hover:bg-secondary/30"
-              }`}
-            >
-              <div className={`h-10 rounded-xl bg-gradient-to-r ${t.preview} mb-3`} />
-              <p className="font-semibold">{t.label}</p>
-              <p className="text-xs text-muted-foreground">{t.desc}</p>
-            </button>
-          ))}
+        <div className="grid sm:grid-cols-2 gap-3">
+          {themes.map((t) => {
+            const selected = currentThemeId === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setThemeId(t.id)}
+                className={`p-4 border transition text-left group ${
+                  selected ? "border-primary/40 bg-primary/10" : "border-border/50 bg-secondary/15 hover:bg-secondary/25"
+                }`}
+                style={{ borderRadius: "var(--radius-card)" }}
+              >
+                <div
+                  className="h-12 mb-3 relative overflow-hidden"
+                  style={{
+                    borderRadius: "calc(var(--radius-card) - 6px)",
+                    backgroundImage: t.background.gradient,
+                  }}
+                >
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      backgroundImage: `url('${t.background.patternUrl}')`,
+                      opacity: t.background.patternOpacity,
+                    }}
+                  />
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      backgroundImage: t.background.noiseUrl ? `url('${t.background.noiseUrl}')` : "none",
+                      opacity: t.background.noiseOpacity,
+                      mixBlendMode: "overlay",
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/30" />
+                </div>
+
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{t.name}</p>
+                    <p className="text-xs text-muted-foreground">{t.description}</p>
+                  </div>
+                  {selected ? (
+                    <span className="text-xs px-2 py-1 rounded-full bg-primary/20 text-primary border border-primary/30">
+                      Active
+                    </span>
+                  ) : (
+                    <span className="text-xs px-2 py-1 rounded-full bg-secondary/30 text-muted-foreground border border-border/40 opacity-0 group-hover:opacity-100 transition">
+                      Preview
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary/20 border border-border/40">
+                    <SquareDashedMousePointer className="w-3 h-3" /> {t.density}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary/20 border border-border/40">
+                    <Zap className="w-3 h-3" /> {t.motionPreset}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary/20 border border-border/40">
+                    <Type className="w-3 h-3" /> font
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
+
+        <p className="mt-4 text-xs text-muted-foreground">
+          Themes now change spacing, motion, icon style, and UI shape. Profiles will get their own customization later.
+        </p>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-6 rounded-2xl">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-6">
         <div className="flex items-center gap-2 mb-5">
           <Shield className="w-5 h-5 text-primary" />
           <h3 className="font-semibold">Privacy</h3>
         </div>
 
         <div className="space-y-4">
-          <label className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-secondary/20 border border-border/50">
+          <label
+            className="flex items-center justify-between gap-4 p-4 bg-secondary/20 border border-border/50"
+            style={{ borderRadius: "var(--radius-card)" }}
+          >
             <div>
               <p className="font-medium">Hide online status</p>
               <p className="text-xs text-muted-foreground">Shows you as offline to friends</p>
@@ -197,7 +257,10 @@ const Settings = () => {
             <input type="checkbox" checked={hideOnline} onChange={(e) => setHideOnline(e.target.checked)} />
           </label>
 
-          <label className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-secondary/20 border border-border/50">
+          <label
+            className="flex items-center justify-between gap-4 p-4 bg-secondary/20 border border-border/50"
+            style={{ borderRadius: "var(--radius-card)" }}
+          >
             <div>
               <p className="font-medium">Hide stats</p>
               <p className="text-xs text-muted-foreground">Friends won't see your streak / minutes</p>
@@ -207,10 +270,11 @@ const Settings = () => {
         </div>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card p-6 rounded-2xl">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card p-6">
         <button
           onClick={() => logout().then(() => toast("Logged out")).catch(() => toast("Logout failed"))}
-          className="w-full px-4 py-3 rounded-xl bg-secondary/20 border border-border/50 hover:bg-secondary/30 transition font-semibold"
+          className="w-full px-4 py-3 bg-secondary/20 border border-border/50 hover:bg-secondary/30 transition font-semibold"
+          style={{ borderRadius: "var(--radius-button)" }}
         >
           <LogOut className="w-4 h-4 inline mr-1" /> Logout
         </button>

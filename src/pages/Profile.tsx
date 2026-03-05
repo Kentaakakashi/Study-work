@@ -445,7 +445,7 @@ export default function Profile() {
                   </div>
 
                   <p className="text-xs text-muted-foreground">
-                    Later we can add “activity” (recent sessions, achievements) and real profile decorations from the store.
+                    More features comming soon...
                   </p>
                 </motion.div>
               )}

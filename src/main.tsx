@@ -5,14 +5,17 @@ import "./index.css";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import { FocusProvider } from "@/context/FocusContext";
+import { ThemeProvider } from "@/theme/ThemeProvider";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <FocusProvider>
-          <App />
-        </FocusProvider>
+        <ThemeProvider>
+          <FocusProvider>
+            <App />
+          </FocusProvider>
+        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>

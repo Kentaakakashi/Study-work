@@ -91,10 +91,15 @@ export default function Leaderboard() {
   const pickIdentity = (r: StatsDoc) => {
     const uid = r.uid || "";
     const p = (uid && profiles[uid]) || {};
+
     const displayName = r.displayName || p.displayName || "User";
     const username = r.username || p.username || "";
-    const photoURL = r.photoURL || r.pfp || p.photoURL || p.pfp || "";
+
+    // IMPORTANT: Prefer in-app chosen PFP (profiles.pfp / profiles.photoURL)
+    // over cached stats photoURL (often Google photoURL).
+    const photoURL = p.pfp || p.photoURL || r.pfp || r.photoURL || "";
     const avatar = photoURL || dice(username || displayName || uid);
+
     const role = (r.role || p.role || "member") as "owner" | "member";
     return { uid, displayName, username, avatar, role };
   };
@@ -129,7 +134,8 @@ export default function Leaderboard() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    // Match other pages' mobile spacing so it doesn't feel "zoomed" / different sizing.
+    <div className="max-w-3xl w-full mx-auto space-y-6 px-4 pb-24">
       <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -188,7 +194,6 @@ export default function Leaderboard() {
                     </div>
                   )}
 
-                  {/* Left: clickable identity */}
                   {profilePath ? (
                     <Link to={profilePath} className="flex items-center gap-3 min-w-0 hover:opacity-95 transition">
                       <div className="w-10 text-center">
@@ -230,7 +235,6 @@ export default function Leaderboard() {
                   )}
 
                   <div className="flex items-center gap-3">
-                    {/* Owner-only UID copy */}
                     {isOwner && id.uid && (
                       <button
                         onClick={() => copyUid(id.uid)}
@@ -255,4 +259,4 @@ export default function Leaderboard() {
       </motion.div>
     </div>
   );
-                        }
+                  }

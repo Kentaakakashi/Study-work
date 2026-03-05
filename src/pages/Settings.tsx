@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/theme/ThemeProvider";
 import { THEMES } from "@/theme/themes";
 
+import { uploadToCloudinary } from "@/lib/cloudinaryUpload";
+
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -98,6 +100,8 @@ export default function Settings() {
   const [nameplate, setNameplate] = useState<string>("none");
   const [ring, setRing] = useState<string>("none");
   const [bannerUrl, setBannerUrl] = useState<string>("");
+
+  const [uploadingBanner, setUploadingBanner] = useState(false);
 
   const themeOptions = useMemo(
     () => THEMES.map((t) => ({ id: t.id, name: t.name })),
@@ -569,6 +573,67 @@ export default function Settings() {
                 <p className="text-xs text-muted-foreground">
                   Optional. Used on your profile header.
                 </p>
+
+                {/* Upload banner via Cloudinary (no Firebase Storage needed) */}
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    id="bannerUpload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingBanner}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      // allow selecting the same file again later
+                      e.currentTarget.value = "";
+                      if (!file) return;
+
+                      setUploadingBanner(true);
+                      try {
+                        const up = await uploadToCloudinary(file, {
+                          folder: "study-zen/banners",
+                          maxBytes: 2 * 1024 * 1024,
+                        });
+                        setBannerUrl(up.secureUrl);
+                        toast.success("Banner uploaded. Hit Save to apply.");
+                      } catch (err: any) {
+                        console.error(err);
+                        toast.error(err?.message || "Banner upload failed.");
+                      } finally {
+                        setUploadingBanner(false);
+                      }
+                    }}
+                  />
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full sm:w-auto"
+                    disabled={uploadingBanner}
+                    onClick={() => {
+                      const el = document.getElementById(
+                        "bannerUpload"
+                      ) as HTMLInputElement | null;
+                      el?.click();
+                    }}
+                  >
+                    {uploadingBanner ? "Uploading…" : "Upload banner"}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full sm:w-auto"
+                    disabled={uploadingBanner || !bannerUrl.trim()}
+                    onClick={() => setBannerUrl("")}
+                  >
+                    Clear
+                  </Button>
+
+                  <p className="text-xs text-muted-foreground sm:ml-auto">
+                    Cloudinary upload. Max 2MB.
+                  </p>
+                </div>
               </div>
             </div>
           </Card>

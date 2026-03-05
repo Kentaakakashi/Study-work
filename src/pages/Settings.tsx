@@ -1,286 +1,288 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { User, Palette, Shield, LogOut, Check, Zap, Type, SquareDashedMousePointer } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
-import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { THEMES, normalizeThemeId, type ThemeId } from "@/theme/themes";
-import { useTheme } from "@/theme/ThemeProvider";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { useAuth } from "@/lib/auth";
+import { Paintbrush, Save, Sparkles, Image, Type, Zap } from "lucide-react";
 
-function normUsername(s: string) {
-  return (s || "")
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/[^a-z0-9_\.]/g, "");
-}
+type ProfileDoc = {
+  displayName?: string;
+  username?: string;
+  pfp?: string;
+  photoURL?: string;
+  bio?: string;
+  role?: "owner" | "member";
 
-const Settings = () => {
-  const { user, logout } = useAuth();
-  const { theme, setThemeId } = useTheme();
+  status?: string;
+  bannerUrl?: string;
+  decoration?: "none" | "spark" | "coffee" | "stars" | "leaf" | "heart";
+  ring?: "none" | "aura" | "neon" | "royal" | "focus";
+  nameplate?: "none" | "neon" | "blueprint" | "soft";
+  effect?: "none" | "aurora" | "sparkles" | "scanlines" | "bubbles";
 
-  const [displayName, setDisplayName] = useState("");
-  const [username, setUsername] = useState("");
-  const [pfpUrl, setPfpUrl] = useState("");
-  const [hideOnline, setHideOnline] = useState(false);
-  const [hideStats, setHideStats] = useState(false);
+  createdAt?: any;
+};
+
+const DECORATIONS: ProfileDoc["decoration"][] = ["none", "spark", "coffee", "stars", "leaf", "heart"];
+const RINGS: ProfileDoc["ring"][] = ["none", "aura", "neon", "royal", "focus"];
+const NAMEPLATES: ProfileDoc["nameplate"][] = ["none", "soft", "neon", "blueprint"];
+const EFFECTS: ProfileDoc["effect"][] = ["none", "aurora", "sparkles", "scanlines", "bubbles"];
+
+export default function Settings() {
+  const { user } = useAuth();
+
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [origUsername, setOrigUsername] = useState("");
 
-  const currentThemeId = theme.id;
+  // editable fields
+  const [bio, setBio] = useState("");
+  const [status, setStatus] = useState("");
+  const [bannerUrl, setBannerUrl] = useState("");
 
-  const themes = useMemo(() => THEMES, []);
+  const [decoration, setDecoration] = useState<ProfileDoc["decoration"]>("none");
+  const [ring, setRing] = useState<ProfileDoc["ring"]>("aura");
+  const [nameplate, setNameplate] = useState<ProfileDoc["nameplate"]>("soft");
+  const [effect, setEffect] = useState<ProfileDoc["effect"]>("none");
 
   useEffect(() => {
-    if (!user) return;
     (async () => {
-      const snap = await getDoc(doc(db, "profiles", user.uid));
-      const p = (snap.data() as any) || {};
-      setDisplayName(p.displayName || user.displayName || "User");
-      setUsername(p.username || "");
-      setOrigUsername(p.username || "");
-      setPfpUrl(p.pfp || p.photoURL || user.photoURL || "");
-      setHideOnline(!!p.hideOnline);
-      setHideStats(!!p.hideStats);
+      if (!user?.uid) return;
+      setLoading(true);
 
-      // If profile has a saved theme, sync it locally (with back-compat).
-      if (p.theme && typeof p.theme === "string") {
-        const normalized = normalizeThemeId(p.theme);
-        if (normalized && normalized !== currentThemeId) setThemeId(normalized as ThemeId);
+      try {
+        const snap = await getDoc(doc(db, "profiles", user.uid));
+        const p = (snap.data() as ProfileDoc) || {};
+
+        setBio(p.bio || "");
+        setStatus(p.status || "");
+        setBannerUrl(p.bannerUrl || "");
+
+        setDecoration(p.decoration || "none");
+        setRing(p.ring || "aura");
+        setNameplate(p.nameplate || "soft");
+        setEffect(p.effect || "none");
+
+        // If createdAt doesn't exist, we can set it later on save (merge won't overwrite existing)
+      } catch (e: any) {
+        console.error(e);
+        toast(e?.message || "Failed to load settings");
+      } finally {
+        setLoading(false);
       }
-    })().catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    })();
+  }, [user?.uid]);
+
+  const canSave = useMemo(() => !!user?.uid && !loading && !saving, [user?.uid, loading, saving]);
 
   const save = async () => {
-    if (!user) return toast("Login required");
-    const uname = normUsername(username);
-    if (uname.length < 3) return toast("Username needs 3+ chars");
-
+    if (!user?.uid) return toast("Login required");
     setSaving(true);
+
     try {
-      // claim username
-      const uref = doc(db, "usernames", uname);
-      const taken = await getDoc(uref);
-      if (taken.exists() && (taken.data() as any)?.uid !== user.uid) {
-        return toast("That username is taken");
-      }
-      await setDoc(uref, { uid: user.uid, updatedAt: serverTimestamp() }, { merge: true });
-
-      // if username changed and old mapping belongs to user, delete old doc (nice cleanup)
-      if (origUsername && origUsername !== uname) {
-        const oldRef = doc(db, "usernames", origUsername);
-        const oldSnap = await getDoc(oldRef);
-        if (oldSnap.exists() && (oldSnap.data() as any)?.uid === user.uid) {
-          await deleteDoc(oldRef).catch(() => {});
-        }
-        setOrigUsername(uname);
-      }
-
       await setDoc(
         doc(db, "profiles", user.uid),
         {
-          displayName: displayName.trim() || "User",
-          username: uname,
-          pfp: pfpUrl.trim(),
-          hideOnline,
-          hideStats,
-          theme: currentThemeId,
-          updatedAt: serverTimestamp(),
+          bio: bio.trim(),
+          status: status.trim(),
+          bannerUrl: bannerUrl.trim(),
+          decoration,
+          ring,
+          nameplate,
+          effect,
+
+          // safe: only sets if missing, because merge true won't delete anything
+          createdAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      toast("Saved ✅");
+      toast("Profile cosmetics saved ✅");
     } catch (e: any) {
+      console.error(e);
       toast(e?.message || "Save failed");
     } finally {
       setSaving(false);
     }
   };
 
+  if (!user?.uid) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <div className="glass-card p-6 rounded-3xl">
+          <p className="text-sm text-muted-foreground">Login to edit your settings.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <User className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold">Profile</h3>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-6 rounded-3xl"
+      >
+        <div className="flex items-center gap-2">
+          <Paintbrush className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-bold">Settings</h3>
         </div>
-
-        <div className="flex items-center gap-4 mb-6">
-          <img
-            src={
-              pfpUrl ||
-              `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(username || displayName || "user")}`
-            }
-            alt=""
-            className="w-16 h-16 rounded-full ring-2 ring-primary/20 object-cover"
-          />
-          <div className="flex-1">
-            <p className="font-semibold">{displayName || "User"}</p>
-            <p className="text-sm text-muted-foreground">@{username || "set-username"}</p>
-          </div>
-          <button onClick={save} disabled={saving} className="glow-button px-4 py-2 font-semibold disabled:opacity-50">
-            <Check className="w-4 h-4 inline mr-1" /> Save
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium mb-1.5 block">Display name</label>
-            <input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium mb-1.5 block">Username</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">@</span>
-              <input
-                value={username}
-                onChange={(e) => setUsername(normUsername(e.target.value))}
-                className="w-full pl-8 pr-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium mb-1.5 block">Profile picture URL</label>
-            <input
-              value={pfpUrl}
-              onChange={(e) => setPfpUrl(e.target.value)}
-              placeholder="https://..."
-              className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-          </div>
-        </div>
-      </motion.div>
-
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass-card p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <Palette className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold">Themes</h3>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          {themes.map((t) => {
-            const selected = currentThemeId === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setThemeId(t.id)}
-                className={`p-4 border transition text-left group ${
-                  selected ? "border-primary/40 bg-primary/10" : "border-border/50 bg-secondary/15 hover:bg-secondary/25"
-                }`}
-                style={{ borderRadius: "var(--radius-card)" }}
-              >
-                <div
-                  className="h-12 mb-3 relative overflow-hidden"
-                  style={{
-                    borderRadius: "calc(var(--radius-card) - 6px)",
-                    backgroundImage: t.background.gradient,
-                  }}
-                >
-                  <div
-                    className="absolute inset-0"
-                    style={{
-                      backgroundImage: `url('${t.background.patternUrl}')`,
-                      opacity: t.background.patternOpacity,
-                    }}
-                  />
-                  <div
-                    className="absolute inset-0"
-                    style={{
-                      backgroundImage: t.background.noiseUrl ? `url('${t.background.noiseUrl}')` : "none",
-                      opacity: t.background.noiseOpacity,
-                      mixBlendMode: "overlay",
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/30" />
-                </div>
-
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">{t.name}</p>
-                    <p className="text-xs text-muted-foreground">{t.description}</p>
-                  </div>
-                  {selected ? (
-                    <span className="text-xs px-2 py-1 rounded-full bg-primary/20 text-primary border border-primary/30">
-                      Active
-                    </span>
-                  ) : (
-                    <span className="text-xs px-2 py-1 rounded-full bg-secondary/30 text-muted-foreground border border-border/40 opacity-0 group-hover:opacity-100 transition">
-                      Preview
-                    </span>
-                  )}
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary/20 border border-border/40">
-                    <SquareDashedMousePointer className="w-3 h-3" /> {t.density}
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary/20 border border-border/40">
-                    <Zap className="w-3 h-3" /> {t.motionPreset}
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary/20 border border-border/40">
-                    <Type className="w-3 h-3" /> font
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        <p className="mt-4 text-xs text-muted-foreground">
-          Themes now change spacing, motion, icon style, and UI shape. Profiles will get their own customization later.
+        <p className="text-sm text-muted-foreground mt-1">
+          Make your profile feel less like a blank passport photo.
         </p>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <Shield className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold">Privacy</h3>
+      {/* Profile cosmetics */}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-6 rounded-3xl space-y-5"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h4 className="font-bold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              Profile Cosmetics
+            </h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              These show on your profile page. Later we can turn them into coin unlocks.
+            </p>
+          </div>
+
+          <button
+            disabled={!canSave}
+            onClick={save}
+            className={`px-4 py-2 rounded-xl border text-sm transition ${
+              canSave
+                ? "bg-primary/15 border-primary/30 text-primary hover:bg-primary/20"
+                : "bg-secondary/15 border-border/40 text-muted-foreground opacity-60 cursor-not-allowed"
+            }`}
+          >
+            <Save className="w-4 h-4 inline mr-1" />
+            {saving ? "Saving..." : "Save"}
+          </button>
         </div>
 
-        <div className="space-y-4">
-          <label
-            className="flex items-center justify-between gap-4 p-4 bg-secondary/20 border border-border/50"
-            style={{ borderRadius: "var(--radius-card)" }}
-          >
-            <div>
-              <p className="font-medium">Hide online status</p>
-              <p className="text-xs text-muted-foreground">Shows you as offline to friends</p>
+        {loading ? (
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        ) : (
+          <>
+            {/* Bio */}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Bio</label>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                rows={3}
+                placeholder="Tell people what you’re grinding for…"
+                className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
             </div>
-            <input type="checkbox" checked={hideOnline} onChange={(e) => setHideOnline(e.target.checked)} />
-          </label>
 
-          <label
-            className="flex items-center justify-between gap-4 p-4 bg-secondary/20 border border-border/50"
-            style={{ borderRadius: "var(--radius-card)" }}
-          >
-            <div>
-              <p className="font-medium">Hide stats</p>
-              <p className="text-xs text-muted-foreground">Friends won't see your streak / minutes</p>
+            {/* Status */}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Status</label>
+              <input
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                placeholder="Studying, don’t disturb 😤"
+                className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
             </div>
-            <input type="checkbox" checked={hideStats} onChange={(e) => setHideStats(e.target.checked)} />
-          </label>
-        </div>
-      </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card p-6">
-        <button
-          onClick={() => logout().then(() => toast("Logged out")).catch(() => toast("Logout failed"))}
-          className="w-full px-4 py-3 bg-secondary/20 border border-border/50 hover:bg-secondary/30 transition font-semibold"
-          style={{ borderRadius: "var(--radius-button)" }}
-        >
-          <LogOut className="w-4 h-4 inline mr-1" /> Logout
-        </button>
+            {/* Banner URL */}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground flex items-center gap-2">
+                <Image className="w-4 h-4" /> Banner URL (optional)
+              </label>
+              <input
+                value={bannerUrl}
+                onChange={(e) => setBannerUrl(e.target.value)}
+                placeholder="https://... (leave empty for auto banner)"
+                className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                If empty, your profile auto-generates a banner based on your username.
+              </p>
+            </div>
+
+            {/* Pickers */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" /> Decoration
+                </label>
+                <select
+                  value={decoration || "none"}
+                  onChange={(e) => setDecoration(e.target.value as any)}
+                  className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                >
+                  {DECORATIONS.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" /> Ring
+                </label>
+                <select
+                  value={ring || "aura"}
+                  onChange={(e) => setRing(e.target.value as any)}
+                  className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                >
+                  {RINGS.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Type className="w-4 h-4" /> Nameplate
+                </label>
+                <select
+                  value={nameplate || "soft"}
+                  onChange={(e) => setNameplate(e.target.value as any)}
+                  className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                >
+                  {NAMEPLATES.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Zap className="w-4 h-4" /> Effect
+                </label>
+                <select
+                  value={effect || "none"}
+                  onChange={(e) => setEffect(e.target.value as any)}
+                  className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                >
+                  {EFFECTS.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40 text-xs text-muted-foreground">
+              Next step (when you’re ready): make cosmetics **unlockable** with coins and show a “Store” inventory like Discord.
+            </div>
+          </>
+        )}
       </motion.div>
     </div>
   );
-};
-
-export default Settings;
+}

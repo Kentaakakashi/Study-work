@@ -7,7 +7,15 @@ import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 import { isOwnerUid } from "@/lib/roles";
 import OwnerBadge from "@/components/OwnerBadge";
-import { collection, doc, getDoc, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+} from "firebase/firestore";
 
 type StatsDoc = {
   uid?: string;
@@ -30,7 +38,9 @@ type ProfileDoc = {
 };
 
 function dice(seed: string) {
-  return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed || "user")}`;
+  return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+    seed || "user"
+  )}`;
 }
 
 function levelFromXp(xp: number) {
@@ -52,7 +62,10 @@ export default function Leaderboard() {
     if (profiles[uid]) return;
     try {
       const snap = await getDoc(doc(db, "profiles", uid));
-      setProfiles((prev) => ({ ...prev, [uid]: (snap.data() as ProfileDoc) || {} }));
+      setProfiles((prev) => ({
+        ...prev,
+        [uid]: (snap.data() as ProfileDoc) || {},
+      }));
     } catch {
       // ignore
     }
@@ -62,7 +75,11 @@ export default function Leaderboard() {
     const q =
       mode === "xp"
         ? query(collection(db, "stats"), orderBy("xp", "desc"), limit(50))
-        : query(collection(db, "stats"), orderBy("weeklyMinutes", "desc"), limit(50));
+        : query(
+            collection(db, "stats"),
+            orderBy("weeklyMinutes", "desc"),
+            limit(50)
+          );
 
     const unsub = onSnapshot(
       q,
@@ -95,8 +112,7 @@ export default function Leaderboard() {
     const displayName = r.displayName || p.displayName || "User";
     const username = r.username || p.username || "";
 
-    // IMPORTANT: Prefer in-app chosen PFP (profiles.pfp / profiles.photoURL)
-    // over cached stats photoURL (often Google photoURL).
+    // Prefer custom in-app PFP first, then google, then fallback
     const photoURL = p.pfp || p.photoURL || r.pfp || r.photoURL || "";
     const avatar = photoURL || dice(username || displayName || uid);
 
@@ -110,7 +126,9 @@ export default function Leaderboard() {
     const weekly = Number(r.weeklyMinutes || 0);
     const { level } = levelFromXp(xp);
 
-    if (mode === "xp") return { right: `${xp}`, unit: "XP", sub: `Lvl ${level} • ${total} min total` };
+    if (mode === "xp")
+      return { right: `${xp}`, unit: "XP", sub: `Lvl ${level} • ${total} min total` };
+
     return { right: `${weekly}`, unit: "MIN", sub: `This week • ${total} min total` };
   };
 
@@ -134,129 +152,154 @@ export default function Leaderboard() {
   };
 
   return (
-    // Match other pages' mobile spacing so it doesn't feel "zoomed" / different sizing.
-    <div className="max-w-3xl w-full mx-auto space-y-6 px-4 pb-24">
-      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-primary" />
-            <h3 className="text-lg font-bold">Leaderboard</h3>
+    // ✅ IMPORTANT: use the SAME wrapper pattern as the rest of your pages
+    <div className="min-h-[calc(100dvh-72px)] px-4 pb-10 pt-4 overflow-x-hidden">
+      <div className="mx-auto w-full max-w-3xl space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-6 rounded-3xl"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-primary" />
+              <h3 className="text-lg font-bold">Leaderboard</h3>
+            </div>
           </div>
-        </div>
 
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setMode("xp")}
-            className={`px-3 py-1 rounded-full bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition ${
-              mode === "xp" ? "bg-primary/20 border-primary/30" : ""
-            }`}
-          >
-            Global (XP)
-          </button>
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMode("xp")}
+              className={`px-3 py-1 rounded-full bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition ${
+                mode === "xp" ? "bg-primary/20 border-primary/30" : ""
+              }`}
+            >
+              Global (XP)
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setMode("weekly")}
-            className={`px-3 py-1 rounded-full bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition ${
-              mode === "weekly" ? "bg-primary/20 border-primary/30" : ""
-            }`}
-          >
-            <CalendarDays className="w-4 h-4 inline mr-1" />
-            Weekly (Minutes)
-          </button>
-        </div>
-      </motion.div>
+            <button
+              type="button"
+              onClick={() => setMode("weekly")}
+              className={`px-3 py-1 rounded-full bg-secondary/20 border border-border/40 text-sm hover:bg-secondary/30 transition ${
+                mode === "weekly" ? "bg-primary/20 border-primary/30" : ""
+              }`}
+            >
+              <CalendarDays className="w-4 h-4 inline mr-1" />
+              Weekly (Minutes)
+            </button>
+          </div>
+        </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
-        <div className="space-y-3">
-          {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No data yet.</p>
-          ) : (
-            rows.map((r, i) => {
-              const id = pickIdentity(r);
-              const m = metricText(r);
-              const isYou = id.uid === youUid;
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-6 rounded-3xl"
+        >
+          <div className="space-y-3">
+            {rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No data yet.</p>
+            ) : (
+              rows.map((r, i) => {
+                const id = pickIdentity(r);
+                const m = metricText(r);
+                const isYou = id.uid === youUid;
 
-              const canLink = !!id.username && id.username !== "unknown";
-              const profilePath = canLink ? `/u/${id.username}` : null;
+                const canLink = !!id.username && id.username !== "unknown";
+                const profilePath = canLink ? `/u/${id.username}` : null;
 
-              return (
-                <div
-                  key={`${id.uid}_${mode}_${i}`}
-                  className={`relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-secondary/15 border ${
-                    isYou ? "border-primary/50 shadow-[0_0_30px_rgba(20,184,166,0.35)]" : "border-border/40"
-                  }`}
-                >
-                  {isYou && (
-                    <div className="absolute -top-2 left-4 text-[10px] tracking-wider font-semibold px-2 py-0.5 rounded-full bg-primary/25 border border-primary/30">
-                      YOU
-                    </div>
-                  )}
-
-                  {profilePath ? (
-                    <Link to={profilePath} className="flex items-center gap-3 min-w-0 hover:opacity-95 transition">
-                      <div className="w-10 text-center">
-                        <span className="text-primary font-bold">#{i + 1}</span>
+                return (
+                  <div
+                    key={`${id.uid}_${mode}_${i}`}
+                    className={`relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-secondary/15 border ${
+                      isYou
+                        ? "border-primary/50 shadow-[0_0_30px_rgba(20,184,166,0.35)]"
+                        : "border-border/40"
+                    }`}
+                  >
+                    {isYou && (
+                      <div className="absolute -top-2 left-4 text-[10px] tracking-wider font-semibold px-2 py-0.5 rounded-full bg-primary/25 border border-primary/30">
+                        YOU
                       </div>
-
-                      <img src={id.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="avatar" />
-
-                      <div className="min-w-0">
-                        <p className="font-semibold truncate flex items-center">
-                          <span className="truncate">{id.displayName}</span>
-                          {id.role === "owner" && <OwnerBadge />}
-                        </p>
-
-                        <p className="text-xs text-muted-foreground truncate">
-                          {m.sub} • @{id.username}
-                        </p>
-                      </div>
-                    </Link>
-                  ) : (
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 text-center">
-                        <span className="text-primary font-bold">#{i + 1}</span>
-                      </div>
-
-                      <img src={id.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="avatar" />
-
-                      <div className="min-w-0">
-                        <p className="font-semibold truncate flex items-center">
-                          <span className="truncate">{id.displayName}</span>
-                          {id.role === "owner" && <OwnerBadge />}
-                        </p>
-
-                        <p className="text-xs text-muted-foreground truncate">
-                          {m.sub} {id.username ? `• @${id.username}` : ""}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-3">
-                    {isOwner && id.uid && (
-                      <button
-                        onClick={() => copyUid(id.uid)}
-                        className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-xs hover:bg-secondary/30 transition"
-                        title="Copy Firebase Auth UID"
-                      >
-                        <Copy className="w-4 h-4 inline mr-1" />
-                        UID
-                      </button>
                     )}
 
-                    <div className="text-right">
-                      <p className="text-primary font-bold text-lg leading-none">{m.right}</p>
-                      <p className="text-primary/80 font-semibold text-xs">{m.unit}</p>
+                    {profilePath ? (
+                      <Link
+                        to={profilePath}
+                        className="flex items-center gap-3 min-w-0 hover:opacity-95 transition"
+                      >
+                        <div className="w-10 text-center">
+                          <span className="text-primary font-bold">#{i + 1}</span>
+                        </div>
+
+                        <img
+                          src={id.avatar}
+                          className="w-12 h-12 rounded-2xl object-cover"
+                          alt="avatar"
+                        />
+
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate flex items-center">
+                            <span className="truncate">{id.displayName}</span>
+                            {id.role === "owner" && <OwnerBadge />}
+                          </p>
+
+                          <p className="text-xs text-muted-foreground truncate">
+                            {m.sub} • @{id.username}
+                          </p>
+                        </div>
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 text-center">
+                          <span className="text-primary font-bold">#{i + 1}</span>
+                        </div>
+
+                        <img
+                          src={id.avatar}
+                          className="w-12 h-12 rounded-2xl object-cover"
+                          alt="avatar"
+                        />
+
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate flex items-center">
+                            <span className="truncate">{id.displayName}</span>
+                            {id.role === "owner" && <OwnerBadge />}
+                          </p>
+
+                          <p className="text-xs text-muted-foreground truncate">
+                            {m.sub} {id.username ? `• @${id.username}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3">
+                      {isOwner && id.uid && (
+                        <button
+                          onClick={() => copyUid(id.uid)}
+                          className="px-3 py-2 rounded-xl bg-secondary/20 border border-border/40 text-xs hover:bg-secondary/30 transition"
+                          title="Copy Firebase Auth UID"
+                        >
+                          <Copy className="w-4 h-4 inline mr-1" />
+                          UID
+                        </button>
+                      )}
+
+                      <div className="text-right">
+                        <p className="text-primary font-bold text-lg leading-none">
+                          {m.right}
+                        </p>
+                        <p className="text-primary/80 font-semibold text-xs">{m.unit}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </motion.div>
+                );
+              })
+            )}
+          </div>
+        </motion.div>
+      </div>
     </div>
   );
-                  }
+}

@@ -2,32 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useAuth } from "@/lib/auth";
-import { Paintbrush, Save, Sparkles, Image, Type, Zap } from "lucide-react";
+import { Paintbrush, Save, Sparkles, Image } from "lucide-react";
 
 type ProfileDoc = {
   displayName?: string;
-  username?: string;
-  pfp?: string;
-  photoURL?: string;
   bio?: string;
-  role?: "owner" | "member";
-
   status?: string;
   bannerUrl?: string;
+
   decoration?: "none" | "spark" | "coffee" | "stars" | "leaf" | "heart";
   ring?: "none" | "aura" | "neon" | "royal" | "focus";
-  nameplate?: "none" | "neon" | "blueprint" | "soft";
+  nameplate?: "none" | "soft" | "neon" | "blueprint";
   effect?: "none" | "aurora" | "sparkles" | "scanlines" | "bubbles";
-
-  createdAt?: any;
 };
-
-const DECORATIONS: ProfileDoc["decoration"][] = ["none", "spark", "coffee", "stars", "leaf", "heart"];
-const RINGS: ProfileDoc["ring"][] = ["none", "aura", "neon", "royal", "focus"];
-const NAMEPLATES: ProfileDoc["nameplate"][] = ["none", "soft", "neon", "blueprint"];
-const EFFECTS: ProfileDoc["effect"][] = ["none", "aurora", "sparkles", "scanlines", "bubbles"];
 
 export default function Settings() {
   const { user } = useAuth();
@@ -35,254 +24,201 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // editable fields
+  const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [status, setStatus] = useState("");
   const [bannerUrl, setBannerUrl] = useState("");
 
-  const [decoration, setDecoration] = useState<ProfileDoc["decoration"]>("none");
-  const [ring, setRing] = useState<ProfileDoc["ring"]>("aura");
-  const [nameplate, setNameplate] = useState<ProfileDoc["nameplate"]>("soft");
-  const [effect, setEffect] = useState<ProfileDoc["effect"]>("none");
+  const [theme, setTheme] = useState(localStorage.getItem("theme") || "kenta");
+
+  const [decoration, setDecoration] = useState("none");
+  const [ring, setRing] = useState("aura");
+  const [nameplate, setNameplate] = useState("soft");
+  const [effect, setEffect] = useState("none");
 
   useEffect(() => {
+    if (!user?.uid) return;
+
     (async () => {
-      if (!user?.uid) return;
-      setLoading(true);
+      const snap = await getDoc(doc(db, "profiles", user.uid));
+      const p = (snap.data() as ProfileDoc) || {};
 
-      try {
-        const snap = await getDoc(doc(db, "profiles", user.uid));
-        const p = (snap.data() as ProfileDoc) || {};
+      setDisplayName(p.displayName || "");
+      setBio(p.bio || "");
+      setStatus(p.status || "");
+      setBannerUrl(p.bannerUrl || "");
 
-        setBio(p.bio || "");
-        setStatus(p.status || "");
-        setBannerUrl(p.bannerUrl || "");
+      setDecoration(p.decoration || "none");
+      setRing(p.ring || "aura");
+      setNameplate(p.nameplate || "soft");
+      setEffect(p.effect || "none");
 
-        setDecoration(p.decoration || "none");
-        setRing(p.ring || "aura");
-        setNameplate(p.nameplate || "soft");
-        setEffect(p.effect || "none");
-
-        // If createdAt doesn't exist, we can set it later on save (merge won't overwrite existing)
-      } catch (e: any) {
-        console.error(e);
-        toast(e?.message || "Failed to load settings");
-      } finally {
-        setLoading(false);
-      }
+      setLoading(false);
     })();
   }, [user?.uid]);
 
-  const canSave = useMemo(() => !!user?.uid && !loading && !saving, [user?.uid, loading, saving]);
+  const canSave = useMemo(() => !loading && !saving, [loading, saving]);
 
   const save = async () => {
-    if (!user?.uid) return toast("Login required");
+    if (!user?.uid) return;
+
     setSaving(true);
 
     try {
       await setDoc(
         doc(db, "profiles", user.uid),
         {
-          bio: bio.trim(),
-          status: status.trim(),
-          bannerUrl: bannerUrl.trim(),
+          displayName,
+          bio,
+          status,
+          bannerUrl,
           decoration,
           ring,
           nameplate,
-          effect,
-
-          // safe: only sets if missing, because merge true won't delete anything
-          createdAt: serverTimestamp(),
+          effect
         },
         { merge: true }
       );
 
-      toast("Profile cosmetics saved ✅");
+      localStorage.setItem("theme", theme);
+      document.documentElement.setAttribute("data-theme", theme);
+
+      toast("Settings saved");
     } catch (e: any) {
-      console.error(e);
-      toast(e?.message || "Save failed");
-    } finally {
-      setSaving(false);
+      toast(e.message);
     }
+
+    setSaving(false);
   };
 
-  if (!user?.uid) {
+  if (!user) {
     return (
-      <div className="max-w-3xl mx-auto">
-        <div className="glass-card p-6 rounded-3xl">
-          <p className="text-sm text-muted-foreground">Login to edit your settings.</p>
-        </div>
+      <div className="glass-card p-6 rounded-3xl">
+        Login required
       </div>
     );
   }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+
       <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{opacity:0,y:10}}
+        animate={{opacity:1,y:0}}
         className="glass-card p-6 rounded-3xl"
       >
-        <div className="flex items-center gap-2">
-          <Paintbrush className="w-5 h-5 text-primary" />
-          <h3 className="text-lg font-bold">Settings</h3>
+        <h2 className="font-bold text-lg">Profile</h2>
+
+        <div className="space-y-3 mt-4">
+
+          <input
+            value={displayName}
+            onChange={e=>setDisplayName(e.target.value)}
+            placeholder="Display name"
+            className="w-full p-3 rounded-xl bg-secondary/30"
+          />
+
+          <textarea
+            value={bio}
+            onChange={e=>setBio(e.target.value)}
+            placeholder="Bio"
+            rows={3}
+            className="w-full p-3 rounded-xl bg-secondary/30"
+          />
+
+          <input
+            value={status}
+            onChange={e=>setStatus(e.target.value)}
+            placeholder="Status"
+            className="w-full p-3 rounded-xl bg-secondary/30"
+          />
+
         </div>
-        <p className="text-sm text-muted-foreground mt-1">
-          Make your profile feel less like a blank passport photo.
-        </p>
       </motion.div>
 
-      {/* Profile cosmetics */}
       <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-6 rounded-3xl space-y-5"
+        initial={{opacity:0,y:10}}
+        animate={{opacity:1,y:0}}
+        className="glass-card p-6 rounded-3xl"
       >
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h4 className="font-bold flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              Profile Cosmetics
-            </h4>
-            <p className="text-xs text-muted-foreground mt-1">
-              These show on your profile page. Later we can turn them into coin unlocks.
-            </p>
-          </div>
+        <h2 className="font-bold text-lg flex items-center gap-2">
+          <Paintbrush size={16}/>
+          Appearance
+        </h2>
 
-          <button
-            disabled={!canSave}
-            onClick={save}
-            className={`px-4 py-2 rounded-xl border text-sm transition ${
-              canSave
-                ? "bg-primary/15 border-primary/30 text-primary hover:bg-primary/20"
-                : "bg-secondary/15 border-border/40 text-muted-foreground opacity-60 cursor-not-allowed"
-            }`}
-          >
-            <Save className="w-4 h-4 inline mr-1" />
-            {saving ? "Saving..." : "Save"}
-          </button>
+        <select
+          value={theme}
+          onChange={(e)=>setTheme(e.target.value)}
+          className="mt-4 p-3 rounded-xl bg-secondary/30 w-full"
+        >
+          <option value="kenta">Kenta OS</option>
+          <option value="lemon">Lemon OS</option>
+        </select>
+      </motion.div>
+
+      <motion.div
+        initial={{opacity:0,y:10}}
+        animate={{opacity:1,y:0}}
+        className="glass-card p-6 rounded-3xl"
+      >
+        <h2 className="font-bold text-lg flex items-center gap-2">
+          <Sparkles size={16}/>
+          Profile Cosmetics
+        </h2>
+
+        <div className="grid grid-cols-2 gap-3 mt-4">
+
+          <select value={decoration} onChange={e=>setDecoration(e.target.value)}>
+            <option value="none">Decoration: none</option>
+            <option value="spark">spark</option>
+            <option value="coffee">coffee</option>
+            <option value="stars">stars</option>
+            <option value="leaf">leaf</option>
+            <option value="heart">heart</option>
+          </select>
+
+          <select value={ring} onChange={e=>setRing(e.target.value)}>
+            <option value="none">ring none</option>
+            <option value="aura">aura</option>
+            <option value="neon">neon</option>
+            <option value="royal">royal</option>
+            <option value="focus">focus</option>
+          </select>
+
+          <select value={nameplate} onChange={e=>setNameplate(e.target.value)}>
+            <option value="soft">soft</option>
+            <option value="neon">neon</option>
+            <option value="blueprint">blueprint</option>
+          </select>
+
+          <select value={effect} onChange={e=>setEffect(e.target.value)}>
+            <option value="none">none</option>
+            <option value="aurora">aurora</option>
+            <option value="sparkles">sparkles</option>
+            <option value="scanlines">scanlines</option>
+            <option value="bubbles">bubbles</option>
+          </select>
+
         </div>
 
-        {loading ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
-        ) : (
-          <>
-            {/* Bio */}
-            <div className="space-y-2">
-              <label className="text-xs text-muted-foreground">Bio</label>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                rows={3}
-                placeholder="Tell people what you’re grinding for…"
-                className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
+        <input
+          value={bannerUrl}
+          onChange={e=>setBannerUrl(e.target.value)}
+          placeholder="Banner image URL"
+          className="mt-4 p-3 rounded-xl bg-secondary/30 w-full"
+        />
 
-            {/* Status */}
-            <div className="space-y-2">
-              <label className="text-xs text-muted-foreground">Status</label>
-              <input
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                placeholder="Studying, don’t disturb 😤"
-                className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
-
-            {/* Banner URL */}
-            <div className="space-y-2">
-              <label className="text-xs text-muted-foreground flex items-center gap-2">
-                <Image className="w-4 h-4" /> Banner URL (optional)
-              </label>
-              <input
-                value={bannerUrl}
-                onChange={(e) => setBannerUrl(e.target.value)}
-                placeholder="https://... (leave empty for auto banner)"
-                className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                If empty, your profile auto-generates a banner based on your username.
-              </p>
-            </div>
-
-            {/* Pickers */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" /> Decoration
-                </label>
-                <select
-                  value={decoration || "none"}
-                  onChange={(e) => setDecoration(e.target.value as any)}
-                  className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                >
-                  {DECORATIONS.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" /> Ring
-                </label>
-                <select
-                  value={ring || "aura"}
-                  onChange={(e) => setRing(e.target.value as any)}
-                  className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                >
-                  {RINGS.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground flex items-center gap-2">
-                  <Type className="w-4 h-4" /> Nameplate
-                </label>
-                <select
-                  value={nameplate || "soft"}
-                  onChange={(e) => setNameplate(e.target.value as any)}
-                  className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                >
-                  {NAMEPLATES.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground flex items-center gap-2">
-                  <Zap className="w-4 h-4" /> Effect
-                </label>
-                <select
-                  value={effect || "none"}
-                  onChange={(e) => setEffect(e.target.value as any)}
-                  className="w-full px-4 py-3 rounded-xl bg-secondary/30 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                >
-                  {EFFECTS.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-secondary/10 border border-border/40 text-xs text-muted-foreground">
-              Next step (when you’re ready): make cosmetics **unlockable** with coins and show a “Store” inventory like Discord.
-            </div>
-          </>
-        )}
       </motion.div>
+
+      <button
+        disabled={!canSave}
+        onClick={save}
+        className="px-6 py-3 rounded-xl bg-primary text-white flex items-center gap-2"
+      >
+        <Save size={16}/>
+        {saving ? "Saving..." : "Save Settings"}
+      </button>
+
     </div>
   );
 }

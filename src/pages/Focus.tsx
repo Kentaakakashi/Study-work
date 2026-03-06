@@ -1,20 +1,17 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import Pomodoro from "./Pomodoro";
 import Stopwatch from "./Stopwatch";
+import FocusTechniques from "./FocusTechniques";
+import FocusMusic from "./FocusMusic";
 
 export default function Focus() {
   return (
     <Routes>
-      {/* /focus -> /focus/pomodoro */}
       <Route index element={<Navigate to="pomodoro" replace />} />
-
-      {/* /focus/pomodoro */}
       <Route path="pomodoro" element={<Pomodoro />} />
-
-      {/* /focus/stopwatch */}
       <Route path="stopwatch" element={<Stopwatch />} />
-
-      {/* anything else under /focus -> go pomodoro */}
+      <Route path="techniques" element={<FocusTechniques />} />
+      <Route path="music" element={<FocusMusic />} />
       <Route path="*" element={<Navigate to="pomodoro" replace />} />
     </Routes>
   );

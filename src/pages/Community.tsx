@@ -24,6 +24,20 @@ type ProfileDoc = {
 };
 
 const subjects = ["General", "Mathematics", "Physics", "Chemistry", "Biology", "Computer Science", "English", "History"];
+function subjectPillClass(subject: string) {
+  const base = "inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border";
+  const map: Record<string, string> = {
+    General: "bg-secondary/25 border-border/40 text-foreground/85",
+    Mathematics: "bg-emerald-500/10 border-emerald-500/25 text-emerald-200",
+    Physics: "bg-sky-500/10 border-sky-500/25 text-sky-200",
+    Chemistry: "bg-fuchsia-500/10 border-fuchsia-500/25 text-fuchsia-200",
+    Biology: "bg-lime-500/10 border-lime-500/25 text-lime-200",
+    "Computer Science": "bg-cyan-500/10 border-cyan-500/25 text-cyan-200",
+    English: "bg-amber-500/10 border-amber-500/25 text-amber-200",
+    History: "bg-orange-500/10 border-orange-500/25 text-orange-200",
+  };
+  return `${base} ${map[subject] || map.General}`;
+}
 
 const Community = () => {
   const { user, profile } = useAuth();
@@ -178,9 +192,7 @@ const Community = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 rounded-full border border-border/40 bg-secondary/20 text-xs">
-                      {p.subject}
-                    </span>
+                    <span className={subjectPillClass(p.subject)}>{p.subject}</span>
                     <ArrowRight className="w-4 h-4 text-muted-foreground" />
                   </div>
                 </div>

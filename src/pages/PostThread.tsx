@@ -41,6 +41,24 @@ type ProfileDoc = {
   username?: string;
 };
 
+function subjectPillClass(subject: string) {
+  const base =
+    "inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border";
+
+  const map: Record<string, string> = {
+    General: "bg-secondary/25 border-border/40 text-foreground/85",
+    Mathematics: "bg-emerald-500/10 border-emerald-500/25 text-emerald-200",
+    Physics: "bg-sky-500/10 border-sky-500/25 text-sky-200",
+    Chemistry: "bg-fuchsia-500/10 border-fuchsia-500/25 text-fuchsia-200",
+    Biology: "bg-lime-500/10 border-lime-500/25 text-lime-200",
+    "Computer Science": "bg-cyan-500/10 border-cyan-500/25 text-cyan-200",
+    English: "bg-amber-500/10 border-amber-500/25 text-amber-200",
+    History: "bg-orange-500/10 border-orange-500/25 text-orange-200",
+  };
+
+  return `${base} ${map[subject] || map.General}`;
+}
+
 export default function PostThread() {
   const { user, profile } = useAuth();
   const { postId } = useParams();
@@ -82,7 +100,11 @@ export default function PostThread() {
   useEffect(() => {
     if (!postId) return;
 
-    const q = query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc"), limit(80));
+    const q = query(
+      collection(db, "posts", postId, "comments"),
+      orderBy("createdAt", "asc"),
+      limit(80)
+    );
 
     const unsub = onSnapshot(
       q,
@@ -156,13 +178,20 @@ export default function PostThread() {
         >
           <ArrowLeft className="w-4 h-4 inline mr-1" /> Back
         </button>
-        <span className="text-xs px-3 py-1 rounded-full border border-border/40 bg-secondary/20">{post.subject}</span>
+
+        <span className={subjectPillClass(post.subject)}>{post.subject}</span>
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-6 rounded-3xl"
+      >
         <h2 className="text-xl font-bold">{post.title}</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          by {postAuthorLine} {post.createdAt ? `• ${prettyTime(post.createdAt)}` : ""} {postUname ? `• @${postUname}` : ""}
+          by {postAuthorLine}{" "}
+          {post.createdAt ? `• ${prettyTime(post.createdAt)}` : ""}{" "}
+          {postUname ? `• @${postUname}` : ""}
         </p>
         <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed">{post.body}</p>
       </motion.div>
@@ -172,7 +201,9 @@ export default function PostThread() {
 
         <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
           {comments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No messages yet. Start the thread.</p>
+            <p className="text-sm text-muted-foreground">
+              No messages yet. Start the thread.
+            </p>
           ) : (
             comments.map((c) => {
               const mine = c.uid === user?.uid;
@@ -193,15 +224,21 @@ export default function PostThread() {
                 <div key={c.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                   <div
                     className={`max-w-[85%] p-3 rounded-2xl border ${
-                      mine ? "bg-primary/10 border-primary/20" : "bg-secondary/15 border-border/40"
+                      mine
+                        ? "bg-primary/10 border-primary/20"
+                        : "bg-secondary/15 border-border/40"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-semibold truncate">{nameNode}</p>
-                      <p className="text-[10px] text-muted-foreground">{c.createdAt ? prettyTime(c.createdAt) : ""}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {c.createdAt ? prettyTime(c.createdAt) : ""}
+                      </p>
                     </div>
                     <p className="text-sm mt-1 whitespace-pre-wrap">{c.text}</p>
-                    {!mine && uname && <p className="text-[10px] text-muted-foreground mt-1">@{uname}</p>}
+                    {!mine && uname && (
+                      <p className="text-[10px] text-muted-foreground mt-1">@{uname}</p>
+                    )}
                   </div>
                 </div>
               );
@@ -219,7 +256,9 @@ export default function PostThread() {
           <button
             onClick={send}
             disabled={!canSend}
-            className={`glow-button px-5 py-3 rounded-xl font-semibold ${!canSend ? "opacity-60 cursor-not-allowed" : ""}`}
+            className={`glow-button px-5 py-3 rounded-xl font-semibold ${
+              !canSend ? "opacity-60 cursor-not-allowed" : ""
+            }`}
           >
             <Send className="w-4 h-4 inline mr-1" /> Send
           </button>

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { Music2, ExternalLink, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import Pomodoro from "./Pomodoro";
@@ -11,11 +11,18 @@ const MUSIC_STORAGE_KEY = "focus:selectedPlaylist";
 type SavedPlaylist = {
   id: string;
   title: string;
+  embedType: "youtube-video" | "youtube-playlist";
 };
+
+function getPlayerSrc(playlist: SavedPlaylist) {
+  if (playlist.embedType === "youtube-playlist") {
+    return `https://www.youtube.com/embed/videoseries?list=${playlist.id}&autoplay=1&controls=1&rel=0`;
+  }
+  return `https://www.youtube.com/embed/${playlist.id}?autoplay=1&controls=1&rel=0&loop=1&playlist=${playlist.id}`;
+}
 
 export default function Focus() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [playlist, setPlaylist] = useState<SavedPlaylist | null>(() => {
     try {
       const raw = localStorage.getItem(MUSIC_STORAGE_KEY);
@@ -37,13 +44,12 @@ export default function Focus() {
 
     window.addEventListener("focus-music-changed", sync as EventListener);
     window.addEventListener("storage", sync);
+
     return () => {
       window.removeEventListener("focus-music-changed", sync as EventListener);
       window.removeEventListener("storage", sync);
     };
   }, []);
-
-  const onMusicPage = location.pathname.includes("/focus/music");
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -56,7 +62,7 @@ export default function Focus() {
         <Route path="*" element={<Navigate to="pomodoro" replace />} />
       </Routes>
 
-      {playlist && !onMusicPage && (
+      {playlist && (
         <div className="glass-card p-4 rounded-3xl border border-border/40">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="min-w-0 flex items-center gap-2">
@@ -93,10 +99,11 @@ export default function Focus() {
           <div className="overflow-hidden rounded-2xl border border-border/40">
             <iframe
               title={playlist.title}
-              style={{ border: 0, width: "100%", height: 152 }}
-              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              style={{ border: 0, width: "100%", height: 220 }}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
               loading="lazy"
-              src={`https://open.spotify.com/embed/playlist/${playlist.id}?utm_source=generator&theme=0`}
+              src={getPlayerSrc(playlist)}
             />
           </div>
         </div>

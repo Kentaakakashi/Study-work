@@ -6,7 +6,6 @@ import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 import { doc, increment, setDoc } from "firebase/firestore";
 import { useFocus } from "@/context/FocusContext";
-import { ensureUserProfile } from "@/lib/users";
 
 export default function Pomodoro() {
   const { user } = useAuth();
@@ -29,7 +28,6 @@ export default function Pomodoro() {
     if (isRunning) {
       t = setInterval(async () => {
         try {
-          await ensureUserProfile(user.uid);
 
           await setDoc(
             doc(db, "stats", user.uid),

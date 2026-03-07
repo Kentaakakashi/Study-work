@@ -9,7 +9,15 @@ import { useFocus } from "@/context/FocusContext";
 
 export default function Pomodoro() {
   const { user } = useAuth();
-  const { pomodoroDuration, breakDuration, isRunning, phase, timeLeft, setRunning, setPomodoroDuration } = useFocus();
+  const {
+    pomodoroDuration,
+    breakDuration,
+    isRunning,
+    phase,
+    timeLeft,
+    setRunning,
+    setPomodoroDuration,
+  } = useFocus();
 
   const [showSettings, setShowSettings] = useState(false);
   const [workMin, setWorkMin] = useState(Math.round(pomodoroDuration / 60));
@@ -24,11 +32,11 @@ export default function Pomodoro() {
   useEffect(() => {
     if (!user) return;
 
-    let t: any = null;
+    let t: ReturnType<typeof setInterval> | null = null;
+
     if (isRunning) {
       t = setInterval(async () => {
         try {
-
           await setDoc(
             doc(db, "stats", user.uid),
             {
@@ -42,7 +50,7 @@ export default function Pomodoro() {
             { merge: true }
           );
         } catch {
-          // silent: don’t break the timer UI if network is flaky
+          // silent: don’t break timer UI if network is flaky
         }
       }, 60_000);
     }
@@ -67,28 +75,45 @@ export default function Pomodoro() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* mini sub-nav for focus section */}
       <div className="flex flex-wrap items-center gap-2">
-        <Link to="/focus/pomodoro" className="px-4 py-2 rounded-2xl border border-primary/30 bg-primary/10 text-primary text-sm font-semibold">
+        <Link
+          to="/focus/pomodoro"
+          className="px-4 py-2 rounded-2xl border border-primary/30 bg-primary/10 text-primary text-sm font-semibold"
+        >
           Pomodoro
         </Link>
-        <Link to="/focus/stopwatch" className="px-4 py-2 rounded-2xl border border-border/40 hover:bg-secondary/20 transition text-sm">
+        <Link
+          to="/focus/stopwatch"
+          className="px-4 py-2 rounded-2xl border border-border/40 hover:bg-secondary/20 transition text-sm"
+        >
           Stopwatch
         </Link>
-        <Link to="/focus/techniques" className="px-4 py-2 rounded-2xl border border-border/40 hover:bg-secondary/20 transition text-sm">
+        <Link
+          to="/focus/techniques"
+          className="px-4 py-2 rounded-2xl border border-border/40 hover:bg-secondary/20 transition text-sm"
+        >
           Techniques
         </Link>
-        <Link to="/focus/music" className="px-4 py-2 rounded-2xl border border-border/40 hover:bg-secondary/20 transition text-sm">
+        <Link
+          to="/focus/music"
+          className="px-4 py-2 rounded-2xl border border-border/40 hover:bg-secondary/20 transition text-sm"
+        >
           Music
         </Link>
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-6 rounded-3xl"
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold">Pomodoro</h2>
             <p className="text-xs text-muted-foreground mt-1">
-              {phase === "work" ? "Focus time" : "Break time"} · Work {Math.round(pomodoroDuration / 60)}m / Break {Math.round(breakDuration / 60)}m
+              {phase === "work" ? "Focus time" : "Break time"} · Work{" "}
+              {Math.round(pomodoroDuration / 60)}m / Break{" "}
+              {Math.round(breakDuration / 60)}m
             </p>
           </div>
 
@@ -103,16 +128,27 @@ export default function Pomodoro() {
 
         <div className="mt-6 flex flex-col items-center">
           <div className="text-6xl font-extrabold tracking-tight">{mmss}</div>
-          <div className="mt-2 text-sm text-muted-foreground">{phase === "work" ? "Stay locked in" : "Breathe"}</div>
+          <div className="mt-2 text-sm text-muted-foreground">
+            {phase === "work" ? "Stay locked in" : "Breathe"}
+          </div>
 
           <div className="mt-6 flex items-center gap-3">
-            <button onClick={() => setRunning(!isRunning)} className="glow-button px-6 py-3 rounded-2xl font-semibold flex items-center gap-2">
-              {isRunning ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+            <button
+              onClick={() => setRunning(!isRunning)}
+              className="glow-button px-6 py-3 rounded-2xl font-semibold flex items-center gap-2"
+            >
+              {isRunning ? (
+                <Pause className="w-5 h-5" />
+              ) : (
+                <Play className="w-5 h-5" />
+              )}
               {isRunning ? "Pause" : "Start"}
             </button>
 
             <button
-              onClick={() => setPomodoroDuration(pomodoroDuration, breakDuration)}
+              onClick={() =>
+                setPomodoroDuration(pomodoroDuration, breakDuration)
+              }
               className="px-6 py-3 rounded-2xl border border-border/40 hover:bg-secondary/20 transition font-semibold flex items-center gap-2"
               title="Reset"
             >
@@ -133,7 +169,10 @@ export default function Pomodoro() {
           >
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-bold">Timer Settings</h3>
-              <button className="text-sm text-muted-foreground hover:text-foreground" onClick={() => setShowSettings(false)}>
+              <button
+                className="text-sm text-muted-foreground hover:text-foreground"
+                onClick={() => setShowSettings(false)}
+              >
                 Close
               </button>
             </div>
@@ -164,7 +203,10 @@ export default function Pomodoro() {
               </div>
             </div>
 
-            <button onClick={applySettings} className="glow-button px-5 py-3 rounded-2xl font-semibold mt-5 w-full">
+            <button
+              onClick={applySettings}
+              className="glow-button px-5 py-3 rounded-2xl font-semibold mt-5 w-full"
+            >
               Save
             </button>
           </motion.div>

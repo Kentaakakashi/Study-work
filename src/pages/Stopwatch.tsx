@@ -56,34 +56,30 @@ const Stopwatch = () => {
         .catch(() => toast("Couldn't save stats"));
     }
 
-    // Also flush any earned minutes from both timers (best effort)
     await flushEarnedMinutes().catch(() => {});
-
     resetStopwatch();
     setNotes("");
   };
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Focus mode switch */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-3 rounded-2xl">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">Focus</p>
-            <p className="text-xs text-muted-foreground truncate">Switch between Pomodoro and Stopwatch</p>
-          </div>
-          <div className="flex items-center gap-1 rounded-2xl bg-secondary/20 border border-border/40 p-1">
-            <Link to="/focus/pomodoro" className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition">
-              Pomodoro
-            </Link>
-            <span className="px-4 py-2 rounded-xl text-sm font-semibold bg-primary/20 border border-primary/30">
-              Stopwatch
-            </span>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to="/focus/pomodoro" className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition">
+            Pomodoro
+          </Link>
+          <span className="px-4 py-2 rounded-xl text-sm font-semibold bg-primary/20 border border-primary/30">
+            Stopwatch
+          </span>
+          <Link to="/focus/techniques" className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition">
+            Techniques
+          </Link>
+          <Link to="/focus/music" className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition">
+            Music
+          </Link>
         </div>
       </motion.div>
 
-      {/* Timer */}
       <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
         <p className="text-sm text-muted-foreground mb-2">Elapsed</p>
         <p className="text-5xl font-extrabold tracking-tight tabular-nums">
@@ -122,7 +118,6 @@ const Stopwatch = () => {
         </div>
       </motion.div>
 
-      {/* Notes */}
       <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
         <div className="flex items-center gap-2 mb-3">
           <StickyNote className="w-4 h-4 text-primary" />
@@ -157,7 +152,6 @@ const Stopwatch = () => {
         </div>
       </motion.div>
 
-      {/* Recent sessions */}
       {sessions.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
           <p className="font-semibold mb-3">Recent sessions</p>

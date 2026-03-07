@@ -15,7 +15,7 @@ type FocusContextValue = {
   breakMinutes: number;
   phase: Phase;
   isRunning: boolean;
-  timeLeft: number; // seconds
+  timeLeft: number;
 
   setRunning: (running: boolean) => void;
   startPomodoro: () => void;
@@ -106,6 +106,7 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [sw, setSw] = useState<StopwatchState>(() => readStopwatch());
+  const [nowTick, setNowTick] = useState(Date.now());
   const awardLockRef = useRef(false);
 
   useEffect(() => {
@@ -139,13 +140,14 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       setTimeLeft((prev) => {
         if (prev > 1) return prev - 1;
 
-        // timer ended, switch phase and award minutes if work session ended
         if (phase === "work") {
           if (user?.uid && !awardLockRef.current) {
             awardLockRef.current = true;
-            addStudyMinutes(user.uid, workMinutes).catch(() => {}).finally(() => {
-              awardLockRef.current = false;
-            });
+            addStudyMinutes(user.uid, workMinutes)
+              .catch(() => {})
+              .finally(() => {
+                awardLockRef.current = false;
+              });
           }
           setPhase("break");
           return breakMinutes * 60;
@@ -159,8 +161,17 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearInterval(id);
   }, [isRunning, phase, workMinutes, breakMinutes, user?.uid]);
 
-  const startPomodoro = () => setIsRunning(true);
+  useEffect(() => {
+    if (!sw.running) return;
 
+    const id = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 250);
+
+    return () => window.clearInterval(id);
+  }, [sw.running]);
+
+  const startPomodoro = () => setIsRunning(true);
   const pausePomodoro = () => setIsRunning(false);
 
   const resetPomodoro = () => {
@@ -217,8 +228,8 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
 
   const swElapsedMs = useMemo(() => {
     if (!sw.running || !sw.startAt) return sw.accumulatedMs;
-    return sw.accumulatedMs + (Date.now() - sw.startAt);
-  }, [sw]);
+    return sw.accumulatedMs + (nowTick - sw.startAt);
+  }, [sw, nowTick]);
 
   const flushEarnedMinutes = async () => {
     return;
@@ -231,13 +242,11 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       phase,
       isRunning,
       timeLeft,
-
       setRunning,
       startPomodoro,
       pausePomodoro,
       resetPomodoro,
       setPomodoroDuration,
-
       sw,
       swElapsedMs,
       startStopwatch,

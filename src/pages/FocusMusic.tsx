@@ -7,23 +7,33 @@ type Playlist = {
   title: string;
   desc: string;
   id: string;
+  embedType: "youtube-video" | "youtube-playlist";
 };
 
 const playlists: Playlist[] = [
   {
-    title: "Deep Focus",
-    desc: "Low-distraction instrumentals for serious studying.",
-    id: "37i9dQZF1DWZeKCadgRdKQ",
+    title: "Lofi Beats",
+    desc: "Chill beats for long study sessions.",
+    id: "jfKfPfyJRdk",
+    embedType: "youtube-video",
   },
   {
-    title: "lofi beats",
-    desc: "Chill beats, minimal lyrics. The classic.",
-    id: "37i9dQZF1DWWQRwui0ExPn",
+    title: "Deep Focus Piano",
+    desc: "Calm piano for reading and problem solving.",
+    id: "lFcSrYw-ARY",
+    embedType: "youtube-video",
   },
   {
-    title: "Peaceful Piano",
-    desc: "Soft piano for reading, writing, and not losing your mind.",
-    id: "37i9dQZF1DX4sWSpwq3LiO",
+    title: "Brown Noise",
+    desc: "Steady noise for locking in with fewer distractions.",
+    id: "RqzGzwTY-6w",
+    embedType: "youtube-video",
+  },
+  {
+    title: "Ambient Coding",
+    desc: "Atmospheric electronic focus vibes.",
+    id: "DWcJFNfaw9c",
+    embedType: "youtube-video",
   },
 ];
 
@@ -32,6 +42,7 @@ const MUSIC_STORAGE_KEY = "focus:selectedPlaylist";
 type SavedPlaylist = {
   id: string;
   title: string;
+  embedType: "youtube-video" | "youtube-playlist";
 };
 
 export default function FocusMusic() {
@@ -58,7 +69,11 @@ export default function FocusMusic() {
   }, []);
 
   const choosePlaylist = (p: Playlist) => {
-    const next = { id: p.id, title: p.title };
+    const next: SavedPlaylist = {
+      id: p.id,
+      title: p.title,
+      embedType: p.embedType,
+    };
     localStorage.setItem(MUSIC_STORAGE_KEY, JSON.stringify(next));
     setSelected(next);
     window.dispatchEvent(new Event("focus-music-changed"));
@@ -87,11 +102,11 @@ export default function FocusMusic() {
           <h2 className="text-lg font-bold">Focus Music</h2>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Pick a playlist. It’ll stay docked while you switch between focus tabs.
+          Same category system, but now using full playable sources instead of that 15-second Spotify clownery.
         </p>
       </motion.div>
 
-      <div className="grid lg:grid-cols-3 gap-4">
+      <div className="grid lg:grid-cols-2 gap-4">
         {playlists.map((p, i) => {
           const active = selected?.id === p.id;
           return (
@@ -100,7 +115,7 @@ export default function FocusMusic() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(0.25, i * 0.05) }}
-              className={`glass-card-hover rounded-3xl border p-4 ${
+              className={`glass-card-hover rounded-3xl border p-5 ${
                 active ? "border-primary/35" : "border-border/40"
               }`}
             >
@@ -120,27 +135,12 @@ export default function FocusMusic() {
                     : "bg-secondary/20 border border-border/40 hover:bg-secondary/30"
                 }`}
               >
-                {active ? "Selected" : "Use this playlist"}
+                {active ? "Now playing" : "Play this"}
               </button>
             </motion.div>
           );
         })}
       </div>
-
-      {selected && (
-        <div className="glass-card p-4 rounded-3xl border border-border/40">
-          <p className="text-sm font-semibold mb-3">Now docked: {selected.title}</p>
-          <div className="overflow-hidden rounded-2xl border border-border/40">
-            <iframe
-              title={selected.title}
-              style={{ border: 0, width: "100%", height: 352 }}
-              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-              loading="lazy"
-              src={`https://open.spotify.com/embed/playlist/${selected.id}?utm_source=generator&theme=0`}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

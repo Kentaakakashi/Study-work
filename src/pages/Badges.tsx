@@ -83,7 +83,7 @@ export default function Badges() {
       </div>
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-muted-foreground">
-        No emojis on badges. More badges too. You're welcome.
+        {Under development}
       </motion.div>
     </div>
   );

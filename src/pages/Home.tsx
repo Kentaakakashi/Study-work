@@ -22,9 +22,9 @@ import {
   increment,
   onSnapshot,
   serverTimestamp,
-  setDoc,
+  updateDoc,
 } from "firebase/firestore";
-import { ensureStats, ymd } from "@/lib/stats";
+import { ensureStats, ymd, levelFromXp } from "@/lib/stats";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = {
@@ -33,8 +33,12 @@ const fadeUp = {
 };
 
 type StatsDoc = {
+  xp?: number;
   streak?: number;
   lastStudiedDate?: string;
+  todayMinutes?: number;
+  totalMinutes?: number;
+  weeklyMinutes?: number;
   today?: Record<string, number>;
   missionClaims?: Record<string, Record<string, boolean>>;
 };
@@ -62,18 +66,9 @@ function dice(seed: string) {
   return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed || "user")}`;
 }
 
-function levelFromXp(xp: number) {
-  const safe = Math.max(0, Math.floor(xp || 0));
-  const level = Math.floor(safe / 250) + 1;
-  const nextLevelXp = level * 250;
-  const intoLevel = safe - (level - 1) * 250;
-  const xpProgress = (intoLevel / 250) * 100;
-  return { level, nextLevelXp, xpProgress };
-}
-
 const Home = () => {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
 
   const [stats, setStats] = useState<StatsDoc | null>(null);
   const [myProfile, setMyProfile] = useState<Profile | null>(null);
@@ -82,7 +77,6 @@ const Home = () => {
   const [friendProfiles, setFriendProfiles] = useState<Record<string, Profile>>({});
   const [presence, setPresence] = useState<Record<string, Presence>>({});
 
-  // Load my profile (for xp/goal) + stats live
   useEffect(() => {
     if (!user) return;
     let unsubStats = () => {};
@@ -106,7 +100,6 @@ const Home = () => {
     };
   }, [user]);
 
-  // Friends list live
   useEffect(() => {
     if (!user) return;
     const unsub = onSnapshot(collection(db, "friends", user.uid, "list"), (snap) => {
@@ -117,7 +110,6 @@ const Home = () => {
     return () => unsub();
   }, [user]);
 
-  // Load friend profiles + presence watchers
   useEffect(() => {
     if (!user) return;
     const unsubs: (() => void)[] = [];
@@ -141,16 +133,15 @@ const Home = () => {
   }, [friendUids.join(",")]);
 
   const todayKey = ymd();
-  const todayMins = stats?.today?.[todayKey] || 0;
-  const streak = stats?.streak || 0;
+  const todayMins = Number(stats?.today?.[todayKey] ?? stats?.todayMinutes ?? 0);
+  const streak = Number(stats?.streak || 0);
 
-  const focusGoal = myProfile?.dailyGoal || 120;
-  const progressPercent = Math.min(100, (todayMins / focusGoal) * 100);
+  const focusGoal = Number(myProfile?.dailyGoal || 120);
+  const progressPercent = Math.min(100, focusGoal > 0 ? (todayMins / focusGoal) * 100 : 0);
 
-  const xp = stats?.xp || 0; 
+  const xp = Number(stats?.xp || 0);
   const { level, nextLevelXp, xpProgress } = levelFromXp(xp);
 
-  // “Plan tomorrow” mission uses planner localStorage (since Planner is local)
   const plannedTomorrow = useMemo(() => {
     const key = user ? `tasks:${user.uid}` : "tasks:guest";
     try {
@@ -197,23 +188,15 @@ const Home = () => {
   }, [todayMins, plannedTomorrow]);
 
   const claimMission = async (missionId: string, xpGain: number) => {
-  if (!user) return;
-  if (isClaimed(missionId)) return;
+    if (!user) return;
+    if (isClaimed(missionId)) return;
 
-  await setDoc(
-    doc(db, "stats", user.uid),
-    {
-      missionClaims: {
-        [todayKey]: {
-          [missionId]: true,
-        },
-      },
-      xp: increment(xpGain),  // ✅ XP now goes to stats
+    await updateDoc(doc(db, "stats", user.uid), {
+      [`missionClaims.${todayKey}.${missionId}`]: true,
+      xp: increment(xpGain),
       updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-};
+    });
+  };
 
   const studyingNow = useMemo(() => {
     const out: { uid: string; name: string; subject: string; avatar: string; status: "online" | "studying" }[] = [];
@@ -224,7 +207,7 @@ const Home = () => {
       const name = p.displayName || "User";
       const avatar = (p.username || name || "U").slice(0, 1).toUpperCase();
       const status = pres.status === "studying" ? "studying" : "online";
-      const subject = "Studying"; // optional: if you later store currentSubject in presence
+      const subject = "Studying";
       out.push({ uid, name, subject, avatar, status });
     });
     return out.slice(0, 6);
@@ -232,9 +215,7 @@ const Home = () => {
 
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="max-w-6xl mx-auto space-y-6">
-      {/* Top row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Focus ring */}
         <motion.div variants={fadeUp} className="glass-card-hover p-6 rounded-2xl flex flex-col items-center justify-center">
           <div className="relative w-32 h-32 mb-4">
             <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
@@ -261,7 +242,6 @@ const Home = () => {
           <p className="text-xs text-muted-foreground">Real minutes from Pomodoro + Stopwatch ✅</p>
         </motion.div>
 
-        {/* Streak & Level */}
         <motion.div variants={fadeUp} className="glass-card-hover p-6 rounded-2xl space-y-5">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-xl bg-warning/10 flex items-center justify-center">
@@ -278,7 +258,9 @@ const Home = () => {
                 <Zap className="w-4 h-4 text-primary" />
                 <span className="text-sm font-semibold">Level {level}</span>
               </div>
-              <span className="text-xs text-muted-foreground">{xp} / {nextLevelXp} XP</span>
+              <span className="text-xs text-muted-foreground">
+                {xp} / {nextLevelXp} XP
+              </span>
             </div>
             <div className="xp-bar">
               <div className="xp-bar-fill" style={{ width: `${xpProgress}%` }} />
@@ -286,7 +268,6 @@ const Home = () => {
           </div>
         </motion.div>
 
-        {/* Quick actions */}
         <motion.div variants={fadeUp} className="glass-card-hover p-6 rounded-2xl">
           <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wide">Quick Actions</h3>
           <div className="grid grid-cols-2 gap-2">
@@ -309,9 +290,7 @@ const Home = () => {
         </motion.div>
       </div>
 
-      {/* Bottom row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Missions */}
         <motion.div variants={fadeUp} className="glass-card-hover p-6 rounded-2xl">
           <div className="flex items-center gap-2 mb-5">
             <Target className="w-5 h-5 text-primary" />
@@ -341,7 +320,10 @@ const Home = () => {
 
                     {!m.done && (
                       <div className="xp-bar mt-1.5 h-1">
-                        <div className="xp-bar-fill h-1" style={{ width: `${(m.progress / m.goal) * 100}%` }} />
+                        <div
+                          className="xp-bar-fill h-1"
+                          style={{ width: `${Math.min(100, (m.progress / m.goal) * 100)}%` }}
+                        />
                       </div>
                     )}
                   </div>
@@ -368,7 +350,6 @@ const Home = () => {
           </div>
         </motion.div>
 
-        {/* Studying Now (real friends presence) */}
         <motion.div variants={fadeUp} className="glass-card-hover p-6 rounded-2xl">
           <div className="flex items-center gap-2 mb-5">
             <Users className="w-5 h-5 text-primary" />

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Play, Pause, RotateCcw, Settings2 } from "lucide-react";
+import { Play, Pause, RotateCcw, Settings2, Square } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
+import { addStudyLog } from "@/lib/stats";
 import { useFocus } from "@/context/FocusContext";
 
 function clamp(n: number, min: number, max: number) {
@@ -9,6 +12,7 @@ function clamp(n: number, min: number, max: number) {
 }
 
 export default function Pomodoro() {
+  const { user } = useAuth();
   const {
     workMinutes,
     breakMinutes,
@@ -19,6 +23,8 @@ export default function Pomodoro() {
     pausePomodoro,
     resetPomodoro,
     setPomodoroDuration,
+    pomodoroWorkedSeconds,
+    resetPomodoroWorkedSeconds,
   } = useFocus();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -53,6 +59,34 @@ export default function Pomodoro() {
     const b = clamp(Number(breakMinDraft) || 5, 1, 240);
     setPomodoroDuration(w, b);
     setShowSettings(false);
+  };
+
+  const stopAndSave = async () => {
+    pausePomodoro();
+
+    const earnedMinutes = Math.max(1, Math.floor(pomodoroWorkedSeconds / 60));
+    if (!user || pomodoroWorkedSeconds < 60) {
+      resetPomodoro();
+      return;
+    }
+
+    try {
+      await addStudyLog(user.uid, {
+        mode: "pomodoro",
+        subject: "Focus Session",
+        minutes: earnedMinutes,
+        notes: `Pomodoro session • Work ${workMinutes}m / Break ${breakMinutes}m`,
+        workMinutes,
+        breakMinutes,
+      });
+
+      toast(`Saved ${earnedMinutes} min pomodoro log ✅`);
+    } catch {
+      toast("Couldn’t save pomodoro log");
+    }
+
+    resetPomodoroWorkedSeconds();
+    resetPomodoro();
   };
 
   return (
@@ -139,13 +173,26 @@ export default function Pomodoro() {
             </div>
           </div>
 
-          <div className="mt-6 flex items-center gap-3">
+          <div className="mt-3 text-xs text-muted-foreground">
+            Logged so far: {Math.floor(pomodoroWorkedSeconds / 60)} min
+          </div>
+
+          <div className="mt-6 flex items-center gap-3 flex-wrap justify-center">
             <button
               onClick={() => (isRunning ? pausePomodoro() : startPomodoro())}
               className="glow-button px-6 py-3 rounded-2xl font-semibold flex items-center gap-2"
             >
               {isRunning ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
               {isRunning ? "Pause" : "Start"}
+            </button>
+
+            <button
+              onClick={stopAndSave}
+              className="px-6 py-3 rounded-2xl bg-primary/10 border border-primary/25 font-semibold hover:bg-primary/15 transition flex items-center gap-2"
+              title="Stop and save log"
+            >
+              <Square className="w-5 h-5" />
+              Stop
             </button>
 
             <button
@@ -215,4 +262,4 @@ export default function Pomodoro() {
       </AnimatePresence>
     </div>
   );
-}
+            }

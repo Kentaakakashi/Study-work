@@ -7,15 +7,32 @@ import { Link } from "react-router-dom";
 import { addStudyMinutes, addStudyLog } from "@/lib/stats";
 import { useFocus } from "@/context/FocusContext";
 
-const subjects = ["Mathematics", "Physics", "Chemistry", "Computer Science", "Biology", "English", "History"];
+const subjects = [
+  "Mathematics",
+  "Physics",
+  "Chemistry",
+  "Computer Science",
+  "Biology",
+  "English",
+  "History",
+];
 
 const Stopwatch = () => {
   const { user } = useAuth();
-  const { sw, swElapsedMs, startStopwatch, pauseStopwatch, resetStopwatch, flushEarnedMinutes } = useFocus();
+  const {
+    sw,
+    swElapsedMs,
+    startStopwatch,
+    pauseStopwatch,
+    resetStopwatch,
+    flushEarnedMinutes,
+  } = useFocus();
 
   const [subject, setSubject] = useState(subjects[0]);
   const [notes, setNotes] = useState("");
-  const [sessions, setSessions] = useState<{ subject: string; mins: number; notes: string; at: number }[]>([]);
+  const [sessions, setSessions] = useState<
+    { subject: string; mins: number; notes: string; at: number }[]
+  >([]);
 
   useEffect(() => {
     if (!user) return;
@@ -23,7 +40,9 @@ const Stopwatch = () => {
     try {
       const raw = localStorage.getItem(key);
       if (raw) setSessions(JSON.parse(raw));
-    } catch {}
+    } catch {
+      // ignore broken local cache
+    }
   }, [user]);
 
   useEffect(() => {
@@ -31,7 +50,9 @@ const Stopwatch = () => {
     const key = `stopwatch:sessions:${user.uid}`;
     try {
       localStorage.setItem(key, JSON.stringify(sessions.slice(0, 25)));
-    } catch {}
+    } catch {
+      // ignore localStorage errors
+    }
   }, [sessions, user]);
 
   const totalSec = Math.floor(swElapsedMs / 1000);
@@ -48,7 +69,11 @@ const Stopwatch = () => {
     }
 
     const m = Math.max(1, Math.round(totalSec / 60));
-    setSessions((prev) => [{ subject, mins: m, notes, at: Date.now() }, ...prev]);
+
+    setSessions((prev) => [
+      { subject, mins: m, notes, at: Date.now() },
+      ...prev,
+    ]);
 
     if (user) {
       await addStudyMinutes(user.uid, m)
@@ -70,27 +95,45 @@ const Stopwatch = () => {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-3 rounded-2xl">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-3 rounded-2xl"
+      >
         <div className="flex flex-wrap items-center gap-2">
-          <Link to="/focus/pomodoro" className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition">
+          <Link
+            to="/focus/pomodoro"
+            className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition"
+          >
             Pomodoro
           </Link>
           <span className="px-4 py-2 rounded-xl text-sm font-semibold bg-primary/20 border border-primary/30">
             Stopwatch
           </span>
-          <Link to="/focus/techniques" className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition">
+          <Link
+            to="/focus/techniques"
+            className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition"
+          >
             Techniques
           </Link>
-          <Link to="/focus/music" className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition">
+          <Link
+            to="/focus/music"
+            className="px-4 py-2 rounded-xl text-sm hover:bg-secondary/30 transition"
+          >
             Music
           </Link>
         </div>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-6 rounded-3xl"
+      >
         <p className="text-sm text-muted-foreground mb-2">Elapsed</p>
         <p className="text-5xl font-extrabold tracking-tight tabular-nums">
-          {String(hrs).padStart(2, "0")}:{String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+          {String(hrs).padStart(2, "0")}:{String(mins).padStart(2, "0")}:
+          {String(secs).padStart(2, "0")}
         </p>
 
         <div className="mt-5 grid grid-cols-3 gap-3">
@@ -125,7 +168,11 @@ const Stopwatch = () => {
         </div>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-6 rounded-3xl"
+      >
         <div className="flex items-center gap-2 mb-3">
           <StickyNote className="w-4 h-4 text-primary" />
           <p className="font-semibold">Session details</p>
@@ -160,26 +207,29 @@ const Stopwatch = () => {
       </motion.div>
 
       {sessions.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-6 rounded-3xl"
+        >
           <p className="font-semibold mb-3">Recent sessions</p>
           <div className="space-y-2">
             {sessions.slice(0, 10).map((s) => (
-              <div key={s.at} className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-secondary/20 border border-border/40">
+              <div
+                key={s.at}
+                className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-secondary/20 border border-border/40"
+              >
                 <div className="min-w-0">
                   <p className="text-sm font-semibold truncate">{s.subject}</p>
-                  <p className="text-xs text-muted-foreground truncate">{s.notes || "No notes"}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {s.notes || "No notes"}
+                  </p>
                 </div>
                 <div className="text-sm font-semibold">{s.mins}m</div>
               </div>
             ))}
           </div>
         </motion.div>
-      )}
-    </div>
-  );
-};
-
-export default Stopwatch;        </motion.div>
       )}
     </div>
   );

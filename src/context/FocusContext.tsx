@@ -29,6 +29,9 @@ type FocusContextValue = {
   pauseStopwatch: () => void;
   resetStopwatch: () => void;
   flushEarnedMinutes: () => Promise<void>;
+
+  pomodoroWorkedSeconds: number;
+  resetPomodoroWorkedSeconds: () => void;
 };
 
 const FocusContext = createContext<FocusContextValue | null>(null);
@@ -40,6 +43,7 @@ const STORAGE_KEYS = {
   running: "focus:isRunning",
   timeLeft: "focus:timeLeft",
   sw: "focus:stopwatch",
+  pomodoroWorkedSeconds: "focus:pomodoroWorkedSeconds",
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -107,6 +111,9 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
 
   const [sw, setSw] = useState<StopwatchState>(() => readStopwatch());
   const [nowTick, setNowTick] = useState(Date.now());
+  const [pomodoroWorkedSeconds, setPomodoroWorkedSeconds] = useState(() =>
+    Math.max(0, readNumber(STORAGE_KEYS.pomodoroWorkedSeconds, 0))
+  );
 
   const pomodoroSecondBucketRef = useRef(0);
 
@@ -135,6 +142,10 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
   }, [sw]);
 
   useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.pomodoroWorkedSeconds, String(pomodoroWorkedSeconds));
+  }, [pomodoroWorkedSeconds]);
+
+  useEffect(() => {
     if (!isRunning) return;
 
     const id = window.setInterval(() => {
@@ -143,11 +154,11 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
 
         if (phase === "work" && user?.uid) {
           pomodoroSecondBucketRef.current += 1;
+          setPomodoroWorkedSeconds((s) => s + 1);
 
           if (pomodoroSecondBucketRef.current >= 60) {
             const earnedMinutes = Math.floor(pomodoroSecondBucketRef.current / 60);
             pomodoroSecondBucketRef.current = pomodoroSecondBucketRef.current % 60;
-
             addStudyMinutes(user.uid, earnedMinutes).catch(() => {});
           }
         }
@@ -169,11 +180,9 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!sw.running) return;
-
     const id = window.setInterval(() => {
       setNowTick(Date.now());
     }, 250);
-
     return () => window.clearInterval(id);
   }, [sw.running]);
 
@@ -184,6 +193,8 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     setIsRunning(false);
     setPhase("work");
     setTimeLeft(workMinutes * 60);
+    pomodoroSecondBucketRef.current = 0;
+    setPomodoroWorkedSeconds(0);
   };
 
   const setPomodoroDuration = (nextWorkMinutes: number, nextBreakMinutes: number) => {
@@ -196,6 +207,7 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     setPhase("work");
     setTimeLeft(safeWork * 60);
     pomodoroSecondBucketRef.current = 0;
+    setPomodoroWorkedSeconds(0);
   };
 
   const setRunning = (running: boolean) => {
@@ -242,6 +254,11 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     return;
   };
 
+  const resetPomodoroWorkedSeconds = () => {
+    setPomodoroWorkedSeconds(0);
+    pomodoroSecondBucketRef.current = 0;
+  };
+
   const value = useMemo<FocusContextValue>(
     () => ({
       workMinutes,
@@ -260,8 +277,10 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       pauseStopwatch,
       resetStopwatch,
       flushEarnedMinutes,
+      pomodoroWorkedSeconds,
+      resetPomodoroWorkedSeconds,
     }),
-    [workMinutes, breakMinutes, phase, isRunning, timeLeft, sw, swElapsedMs]
+    [workMinutes, breakMinutes, phase, isRunning, timeLeft, sw, swElapsedMs, pomodoroWorkedSeconds]
   );
 
   return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;

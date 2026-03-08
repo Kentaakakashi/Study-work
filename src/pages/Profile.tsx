@@ -771,7 +771,7 @@ export default function Profile() {
             </div>
 
             <p className="text-xs text-muted-foreground mt-4">
-              Decorations are now actual themed layers, not just emoji slapped on top.
+              {Under development}
             </p>
           </motion.div>
         ) : (
@@ -806,7 +806,7 @@ export default function Profile() {
             </div>
 
             <p className="text-xs text-muted-foreground mt-4">
-              Next upgrade: show decoration thumbnails in Settings, not just dropdown text.
+              
             </p>
           </motion.div>
         )}

@@ -771,7 +771,7 @@ export default function Profile() {
             </div>
 
             <p className="text-xs text-muted-foreground mt-4">
-              {Under development}
+              Under development
             </p>
           </motion.div>
         ) : (

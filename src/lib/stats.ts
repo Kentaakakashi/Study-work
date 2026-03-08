@@ -4,6 +4,7 @@ import {
   setDoc,
   increment,
   serverTimestamp,
+  runTransaction,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { createNotification } from "@/lib/notifications";
@@ -12,12 +13,18 @@ export function ymd(date: Date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
+function ymdOffset(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return ymd(d);
+}
+
 export function levelFromXp(xp: number) {
-  const safe = Math.max(0, Math.floor(xp || 0));
+  const safe = Math.max(0, Math.floor(Number(xp) || 0));
   const level = Math.floor(safe / 250) + 1;
+  const nextLevelXp = level * 250;
   const intoLevel = safe - (level - 1) * 250;
   const xpProgress = (intoLevel / 250) * 100;
-  const nextLevelXp = level * 250;
 
   return {
     level,
@@ -38,6 +45,7 @@ export async function ensureStats(uid: string) {
       weeklyMinutes: 0,
       todayMinutes: 0,
       streak: 0,
+      lastStudiedDate: "",
       today: {},
       missionClaims: {},
       createdAt: serverTimestamp(),
@@ -47,51 +55,66 @@ export async function ensureStats(uid: string) {
 }
 
 export async function addFocusMinutes(uid: string, minutes: number) {
-  if (!uid) throw new Error("addFocusMinutes: missing uid");
-  const m = Math.max(0, Math.floor(minutes));
-  if (m <= 0) return;
-
-  const ref = doc(db, "stats", uid);
-
-  await setDoc(
-    ref,
-    {
-      uid,
-      todayMinutes: increment(m),
-      weeklyMinutes: increment(m),
-      totalMinutes: increment(m),
-      xp: increment(m),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  return addStudyMinutes(uid, minutes);
 }
 
 export async function addStudyMinutes(uid: string, minutes: number) {
-  if (!uid || minutes <= 0) return;
+  if (!uid) return;
+
+  const m = Math.max(0, Math.floor(Number(minutes) || 0));
+  if (m <= 0) return;
 
   const ref = doc(db, "stats", uid);
   const todayKey = ymd();
+  const yesterdayKey = ymdOffset(-1);
 
-  await setDoc(
-    ref,
-    {
-      uid,
-      xp: increment(minutes),
-      totalMinutes: increment(minutes),
-      weeklyMinutes: increment(minutes),
-      todayMinutes: increment(minutes),
-      today: {
-        [todayKey]: increment(minutes),
+  await ensureStats(uid);
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists() ? (snap.data() as any) : {};
+
+    const prevXp = Number(data?.xp || 0);
+    const prevTotal = Number(data?.totalMinutes || 0);
+    const prevWeekly = Number(data?.weeklyMinutes || 0);
+    const prevTodayMinutes = Number(data?.todayMinutes || 0);
+    const prevTodayMap = (data?.today || {}) as Record<string, number>;
+    const prevTodayForKey = Number(prevTodayMap[todayKey] || 0);
+
+    const lastStudiedDate = String(data?.lastStudiedDate || "");
+    let nextStreak = Number(data?.streak || 0);
+
+    if (lastStudiedDate !== todayKey) {
+      if (lastStudiedDate === yesterdayKey) {
+        nextStreak += 1;
+      } else {
+        nextStreak = 1;
+      }
+    }
+
+    tx.set(
+      ref,
+      {
+        uid,
+        xp: prevXp + m,
+        totalMinutes: prevTotal + m,
+        weeklyMinutes: prevWeekly + m,
+        todayMinutes: prevTodayMinutes + m,
+        today: {
+          ...prevTodayMap,
+          [todayKey]: prevTodayForKey + m,
+        },
+        streak: nextStreak,
+        lastStudiedDate: todayKey,
+        updatedAt: serverTimestamp(),
       },
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+      { merge: true }
+    );
+  });
 
   const snap = await getDoc(ref);
-  const data = snap.data();
-  const total = data?.totalMinutes || 0;
+  const data = snap.data() as any;
+  const total = Number(data?.totalMinutes || 0);
 
   if (total >= 300) {
     await createNotification(
@@ -101,6 +124,6 @@ export async function addStudyMinutes(uid: string, minutes: number) {
       "Badge unlocked",
       "5 hours total focused 🏅",
       { badge: "five_hours" }
-    );
+    ).catch(() => {});
   }
 }

@@ -37,7 +37,7 @@ const AITutor = () => {
     {
       id: "1",
       role: "assistant",
-      text: "Hey! 👋 I'm your AI study buddy. Pick a mode below or ask me anything — I'll teach step-by-step.",
+      text: "Hey! 👋 I'm your AI study buddy. Pick a mode above or ask me anything. I'll teach step-by-step.",
     },
   ]);
   const [input, setInput] = useState("");

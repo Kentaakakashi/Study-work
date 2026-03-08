@@ -50,7 +50,6 @@ type Profile = {
   photoURL?: string;
   hideOnline?: boolean;
   hideStats?: boolean;
-  xp?: number;
   dailyGoal?: number;
 };
 
@@ -137,10 +136,10 @@ const Home = () => {
   const streak = Number(stats?.streak || 0);
 
   const focusGoal = Number(myProfile?.dailyGoal || 120);
-  const progressPercent = Math.min(100, focusGoal > 0 ? (todayMins / focusGoal) * 100 : 0);
+  const progressPercent = Math.max(0, Math.min(100, focusGoal > 0 ? (todayMins / focusGoal) * 100 : 0));
 
   const xp = Number(stats?.xp || 0);
-  const { level, nextLevelXp, xpProgress } = levelFromXp(xp);
+  const { level, intoLevel, xpProgress } = levelFromXp(xp);
 
   const plannedTomorrow = useMemo(() => {
     const key = user ? `tasks:${user.uid}` : "tasks:guest";
@@ -252,6 +251,7 @@ const Home = () => {
               <p className="text-sm text-muted-foreground">Day Streak</p>
             </div>
           </div>
+
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-2">
@@ -259,11 +259,15 @@ const Home = () => {
                 <span className="text-sm font-semibold">Level {level}</span>
               </div>
               <span className="text-xs text-muted-foreground">
-                {xp} / {nextLevelXp} XP
+                {intoLevel} / 250 XP
               </span>
             </div>
-            <div className="xp-bar">
-              <div className="xp-bar-fill" style={{ width: `${xpProgress}%` }} />
+
+            <div className="w-full h-2 rounded-full bg-secondary/40 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-500"
+                style={{ width: `${Math.max(3, xpProgress)}%` }}
+              />
             </div>
           </div>
         </motion.div>
@@ -301,49 +305,54 @@ const Home = () => {
           <div className="space-y-3">
             {missions.map((m) => {
               const claimed = isClaimed(m.id);
+              const missionProgress = Math.max(0, Math.min(100, (m.progress / m.goal) * 100));
+
               return (
                 <div
                   key={m.id}
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                  className={`p-3 rounded-xl transition-colors ${
                     claimed ? "bg-success/5 border border-success/20" : "bg-secondary/20"
                   }`}
                 >
-                  <CheckCircle2
-                    className={`w-5 h-5 flex-shrink-0 ${
-                      m.done ? "text-success" : "text-muted-foreground/30"
-                    }`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium ${claimed ? "line-through text-muted-foreground" : ""}`}>
-                      {m.label}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2
+                      className={`w-5 h-5 flex-shrink-0 ${
+                        m.done ? "text-success" : "text-muted-foreground/30"
+                      }`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${claimed ? "line-through text-muted-foreground" : ""}`}>
+                        {m.label}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {m.progress} / {m.goal}
+                      </p>
+                    </div>
 
-                    {!m.done && (
-                      <div className="xp-bar mt-1.5 h-1">
-                        <div
-                          className="xp-bar-fill h-1"
-                          style={{ width: `${Math.min(100, (m.progress / m.goal) * 100)}%` }}
-                        />
-                      </div>
+                    <span className="text-xs font-mono text-primary">+{m.xp} XP</span>
+
+                    {m.done && !claimed && (
+                      <button
+                        onClick={() => claimMission(m.id, m.xp)}
+                        className="text-xs px-3 py-1 rounded-full bg-success/10 text-success font-medium hover:bg-success/20 transition-colors"
+                      >
+                        Claim
+                      </button>
+                    )}
+
+                    {claimed && (
+                      <span className="text-xs px-3 py-1 rounded-full bg-success/10 text-success font-medium">
+                        Claimed
+                      </span>
                     )}
                   </div>
 
-                  <span className="text-xs font-mono text-primary">+{m.xp} XP</span>
-
-                  {m.done && !claimed && (
-                    <button
-                      onClick={() => claimMission(m.id, m.xp)}
-                      className="text-xs px-3 py-1 rounded-full bg-success/10 text-success font-medium hover:bg-success/20 transition-colors"
-                    >
-                      Claim
-                    </button>
-                  )}
-
-                  {claimed && (
-                    <span className="text-xs px-3 py-1 rounded-full bg-success/10 text-success font-medium">
-                      Claimed
-                    </span>
-                  )}
+                  <div className="w-full h-1.5 rounded-full bg-secondary/40 overflow-hidden mt-3">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all duration-500"
+                      style={{ width: `${Math.max(missionProgress, m.done ? 100 : 0)}%` }}
+                    />
+                  </div>
                 </div>
               );
             })}

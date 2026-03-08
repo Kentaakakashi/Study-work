@@ -47,7 +47,7 @@ export default function FocusTechniques() {
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 rounded-3xl">
         <h2 className="text-lg font-bold">Focus Techniques</h2>
         <p className="text-xs text-muted-foreground mt-2">
-          Pick a technique and it’ll set the Pomodoro timer correctly. No random 240-minute nonsense anymore.
+          Pick a technique and it’ll set the Pomodoro timer correctly. 
         </p>
       </motion.div>
 

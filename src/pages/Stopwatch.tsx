@@ -4,7 +4,7 @@ import { Play, Pause, Square, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { Link } from "react-router-dom";
-import { addStudyMinutes } from "@/lib/stats";
+import { addStudyMinutes, addStudyLog } from "@/lib/stats";
 import { useFocus } from "@/context/FocusContext";
 
 const subjects = ["Mathematics", "Physics", "Chemistry", "Computer Science", "Biology", "English", "History"];
@@ -54,6 +54,13 @@ const Stopwatch = () => {
       await addStudyMinutes(user.uid, m)
         .then(() => toast(`Saved +${m} min ✅`))
         .catch(() => toast("Couldn't save stats"));
+
+      await addStudyLog(user.uid, {
+        mode: "stopwatch",
+        subject,
+        minutes: m,
+        notes,
+      }).catch(() => {});
     }
 
     await flushEarnedMinutes().catch(() => {});
@@ -167,6 +174,12 @@ const Stopwatch = () => {
             ))}
           </div>
         </motion.div>
+      )}
+    </div>
+  );
+};
+
+export default Stopwatch;        </motion.div>
       )}
     </div>
   );

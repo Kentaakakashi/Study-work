@@ -5,6 +5,8 @@ import {
   increment,
   serverTimestamp,
   runTransaction,
+  collection,
+  addDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { createNotification } from "@/lib/notifications";
@@ -22,14 +24,17 @@ function ymdOffset(days: number) {
 export function levelFromXp(xp: number) {
   const safe = Math.max(0, Math.floor(Number(xp) || 0));
   const level = Math.floor(safe / 250) + 1;
+  const currentLevelBaseXp = (level - 1) * 250;
   const nextLevelXp = level * 250;
-  const intoLevel = safe - (level - 1) * 250;
-  const xpProgress = (intoLevel / 250) * 100;
+  const intoLevel = safe - currentLevelBaseXp;
+  const xpProgress = Math.max(0, Math.min(100, (intoLevel / 250) * 100));
 
   return {
     level,
     nextLevelXp,
     xpProgress,
+    intoLevel,
+    currentLevelBaseXp,
   };
 }
 
@@ -67,6 +72,7 @@ export async function addStudyMinutes(uid: string, minutes: number) {
   const ref = doc(db, "stats", uid);
   const todayKey = ymd();
   const yesterdayKey = ymdOffset(-1);
+  const xpGain = m * 3;
 
   await ensureStats(uid);
 
@@ -96,7 +102,7 @@ export async function addStudyMinutes(uid: string, minutes: number) {
       ref,
       {
         uid,
-        xp: prevXp + m,
+        xp: prevXp + xpGain,
         totalMinutes: prevTotal + m,
         weeklyMinutes: prevWeekly + m,
         todayMinutes: prevTodayMinutes + m,
@@ -126,4 +132,29 @@ export async function addStudyMinutes(uid: string, minutes: number) {
       { badge: "five_hours" }
     ).catch(() => {});
   }
+}
+
+export async function addStudyLog(
+  uid: string,
+  log: {
+    mode: "pomodoro" | "stopwatch";
+    subject?: string;
+    minutes: number;
+    notes?: string;
+    workMinutes?: number;
+    breakMinutes?: number;
+  }
+) {
+  if (!uid) return;
+  const mins = Math.max(1, Math.floor(Number(log.minutes) || 0));
+
+  await addDoc(collection(db, "users", uid, "studyLogs"), {
+    mode: log.mode,
+    subject: log.subject || "General",
+    minutes: mins,
+    notes: log.notes || "",
+    workMinutes: log.workMinutes ?? null,
+    breakMinutes: log.breakMinutes ?? null,
+    createdAt: serverTimestamp(),
+  });
 }

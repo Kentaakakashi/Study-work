@@ -83,7 +83,7 @@ export default function Badges() {
       </div>
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-muted-foreground">
-        {Under development}
+        Under development
       </motion.div>
     </div>
   );

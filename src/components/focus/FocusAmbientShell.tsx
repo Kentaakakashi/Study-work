@@ -312,29 +312,34 @@ function WeatherLayer({
         }
 
         if (weather === "sakura") {
+  const size = 8 + (p.sizeRand % 4) * 2;
   return (
     <span
       key={p.i}
       className="focus-petal-particle"
-      style={commonStyle}
-    >
-      ✿
-    </span>
+      style={{
+        ...commonStyle,
+        width: `${size}px`,
+        height: `${Math.round(size * 0.8)}px`,
+      }}
+    />
   );
 }
 
 if (weather === "leaves") {
+  const size = 8 + (p.sizeRand % 4) * 2;
   return (
     <span
       key={p.i}
       className="focus-leaf-particle"
-      style={commonStyle}
-    >
-      ✦
-    </span>
+      style={{
+        ...commonStyle,
+        width: `${size}px`,
+        height: `${Math.round(size * 0.7)}px`,
+      }}
+    />
   );
 }
-
         return (
           <span
             key={p.i}

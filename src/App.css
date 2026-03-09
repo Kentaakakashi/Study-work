@@ -130,32 +130,37 @@
 
 @keyframes focus-petal{
   0%{
-    transform:translate3d(0,-10vh,0) rotate(0deg);
+    transform:translate3d(0,-10vh,0) rotate(0deg) scale(0.9);
     opacity:0;
   }
   10%{
     opacity:1;
   }
+  50%{
+    transform:translate3d(28px,45vh,0) rotate(140deg) scale(1);
+  }
   100%{
-    transform:translate3d(50px,112vh,0) rotate(220deg);
+    transform:translate3d(60px,112vh,0) rotate(260deg) scale(0.95);
     opacity:0;
   }
 }
 
 @keyframes focus-leaf{
   0%{
-    transform:translate3d(0,-10vh,0) rotate(0deg);
+    transform:translate3d(0,-10vh,0) rotate(0deg) scale(0.9);
     opacity:0;
   }
   10%{
     opacity:1;
   }
+  50%{
+    transform:translate3d(-24px,48vh,0) rotate(120deg) scale(1);
+  }
   100%{
-    transform:translate3d(-55px,112vh,0) rotate(260deg);
+    transform:translate3d(-58px,112vh,0) rotate(260deg) scale(0.95);
     opacity:0;
   }
 }
-
 @keyframes focus-stars{
   0%,100%{
     opacity:0.2;

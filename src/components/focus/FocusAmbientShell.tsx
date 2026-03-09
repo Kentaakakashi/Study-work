@@ -312,28 +312,28 @@ function WeatherLayer({
         }
 
         if (weather === "sakura") {
-          return (
-            <span
-              key={p.i}
-              className="focus-petal-particle"
-              style={commonStyle}
-            >
-              ✿
-            </span>
-          );
-        }
+  return (
+    <span
+      key={p.i}
+      className="focus-petal-particle"
+      style={commonStyle}
+    >
+      ✿
+    </span>
+  );
+}
 
-        if (weather === "leaves") {
-          return (
-            <span
-              key={p.i}
-              className="focus-leaf-particle"
-              style={commonStyle}
-            >
-              ✦
-            </span>
-          );
-        }
+if (weather === "leaves") {
+  return (
+    <span
+      key={p.i}
+      className="focus-leaf-particle"
+      style={commonStyle}
+    >
+      ✦
+    </span>
+  );
+}
 
         return (
           <span

@@ -1,3 +1,4 @@
+import "./App.css";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import EmailVerificationGate from "@/components/EmailVerificationGate";
@@ -15,7 +16,7 @@ import Onboarding from "@/pages/Onboarding";
 import Home from "@/pages/Home";
 import Planner from "@/pages/Planner";
 import Community from "@/pages/Community";
-import PostThread from "@/pages/PostThread"; // ✅ FIX: thread page route target
+import PostThread from "@/pages/PostThread";
 import Friends from "@/pages/Friends";
 import Stats from "@/pages/Stats";
 import Leaderboard from "@/pages/Leaderboard";
@@ -73,11 +74,9 @@ export default function App() {
 
   return (
     <>
-      {/* Blocks only email/password unverified users */}
       <EmailVerificationGate />
 
       <Routes>
-        {/* Public */}
         <Route
           path="/login"
           element={
@@ -87,10 +86,8 @@ export default function App() {
           }
         />
 
-        {/* Public profile */}
         <Route path="/u/:username" element={<Profile />} />
 
-        {/* Onboarding (no app shell) */}
         <Route
           path="/onboarding"
           element={
@@ -100,7 +97,6 @@ export default function App() {
           }
         />
 
-        {/* Protected app shell */}
         <Route
           element={
             <RequireAuth>
@@ -110,17 +106,13 @@ export default function App() {
             </RequireAuth>
           }
         >
-          {/* Main */}
           <Route
             path="/home"
             element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Home />}
           />
           <Route path="/planner" element={<Planner />} />
           <Route path="/community" element={<Community />} />
-
-          {/* ✅ FIX: community thread route */}
           <Route path="/community/:postId" element={<PostThread />} />
-
           <Route path="/friends" element={<Friends />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
@@ -128,16 +120,13 @@ export default function App() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/settings" element={<Settings />} />
 
-          {/* Tools */}
           <Route path="/focus/*" element={<Focus />} />
           <Route path="/ai" element={<AI />} />
 
-          {/* Support */}
           <Route path="/support" element={<Support />} />
           <Route path="/support/new" element={<SupportNew />} />
           <Route path="/support/:ticketId" element={<SupportTicketPage />} />
 
-          {/* Admin (owner only) */}
           <Route
             path="/admin"
             element={
@@ -172,7 +161,6 @@ export default function App() {
           />
         </Route>
 
-        {/* Root */}
         <Route
           path="/"
           element={
@@ -188,10 +176,10 @@ export default function App() {
           }
         />
 
-        {/* Not found */}
         <Route path="/404" element={<NotFound />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
     </>
   );
 }
+          

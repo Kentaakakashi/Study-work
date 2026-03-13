@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CloudRain,
   Snowflake,
- Flower2,
+  Flower2,
   Leaf,
   Stars,
   Image as ImageIcon,
@@ -62,7 +62,7 @@ type Particle = {
   opacity: number;
 };
 
-const STORAGE_KEY = "focus:ambient:v4";
+const STORAGE_KEY = "focus:ambient:v5";
 
 const SCENES: SceneConfig[] = [
   {
@@ -131,6 +131,27 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function hashString(input: string) {
+  let h = 1779033703 ^ input.length;
+  for (let i = 0; i < input.length; i += 1) {
+    h = Math.imul(h ^ input.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  h = Math.imul(h ^ (h >>> 16), 2246822507);
+  h = Math.imul(h ^ (h >>> 13), 3266489909);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+function mulberry32(seed: number) {
+  let t = seed >>> 0;
+  return function random() {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function loadAmbientState(): AmbientState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -158,10 +179,10 @@ function loadAmbientState(): AmbientState {
 function makeSeededParticles(type: WeatherKind, mobile: boolean): Particle[] {
   const counts: Record<Exclude<WeatherKind, "none">, number> = {
     rain: mobile ? 46 : 90,
-    snow: mobile ? 32 : 60,
-    sakura: mobile ? 24 : 40,
-    leaves: mobile ? 18 : 28,
-    stars: mobile ? 36 : 65,
+    snow: mobile ? 30 : 58,
+    sakura: mobile ? 24 : 42,
+    leaves: mobile ? 18 : 30,
+    stars: mobile ? 42 : 80,
   };
 
   if (type === "none") return [];
@@ -169,48 +190,58 @@ function makeSeededParticles(type: WeatherKind, mobile: boolean): Particle[] {
   const count = counts[type];
   const particles: Particle[] = [];
 
+  const typeSeed = hashString(`${type}-${mobile ? "mobile" : "desktop"}`);
+  const random = mulberry32(typeSeed);
+
   for (let i = 0; i < count; i += 1) {
-    const seed = i * 9973 + type.length * 131;
-    const r1 = ((seed * 37) % 1000) / 1000;
-    const r2 = ((seed * 67) % 1000) / 1000;
-    const r3 = ((seed * 97) % 1000) / 1000;
-    const r4 = ((seed * 139) % 1000) / 1000;
-    const r5 = ((seed * 191) % 1000) / 1000;
-    const r6 = ((seed * 223) % 1000) / 1000;
+    const spreadBase = (i + random()) / count;
+    const spreadJitter = (random() - 0.5) * (mobile ? 1.8 : 1.2);
+    const left = clamp(spreadBase * 100 + spreadJitter, 1, 99);
+
+    const top = random() * 100;
+    const delay = -random() * (type === "stars" ? 4 : 10);
+
+    const duration =
+      type === "rain"
+        ? 0.9 + random() * 0.9
+        : type === "snow"
+        ? 7 + random() * 5
+        : type === "stars"
+        ? 2.2 + random() * 2.2
+        : 8 + random() * 5;
+
+    const drift =
+      type === "rain"
+        ? 8 + random() * 18
+        : type === "snow"
+        ? -28 + random() * 56
+        : -55 + random() * 110;
+
+    const size =
+      type === "rain"
+        ? 1 + random() * 1.3
+        : type === "snow"
+        ? 3 + random() * 4.5
+        : type === "stars"
+        ? 1.5 + random() * 2.6
+        : 8 + random() * 9;
+
+    const opacity =
+      type === "rain"
+        ? 0.26 + random() * 0.34
+        : type === "stars"
+        ? 0.4 + random() * 0.55
+        : 0.56 + random() * 0.3;
 
     particles.push({
       id: i,
-      left: r1 * 100,
-      top: r6 * 100,
-      delay: -r2 * 8,
-      duration:
-        type === "rain"
-          ? 0.8 + r3 * 0.9
-          : type === "snow"
-          ? 7 + r3 * 6
-          : type === "stars"
-          ? 2.2 + r3 * 2.2
-          : 8 + r3 * 6,
-      drift:
-        type === "rain"
-          ? 8 + r4 * 20
-          : type === "snow"
-          ? -30 + r4 * 60
-          : -55 + r4 * 110,
-      size:
-        type === "rain"
-          ? 1 + r5 * 1.4
-          : type === "snow"
-          ? 3 + r5 * 5
-          : type === "stars"
-          ? 1.5 + r5 * 2.5
-          : 8 + r5 * 10,
-      opacity:
-        type === "rain"
-          ? 0.28 + r6 * 0.35
-          : type === "stars"
-          ? 0.35 + r6 * 0.65
-          : 0.55 + r6 * 0.35,
+      left,
+      top,
+      delay,
+      duration,
+      drift,
+      size,
+      opacity,
     });
   }
 
@@ -723,10 +754,7 @@ function WeatherLayer({
               style={
                 {
                   left: `${particle.left}%`,
-                  width:
-                    type === "rain"
-                      ? `${particle.size}px`
-                      : `${particle.size}px`,
+                  width: `${particle.size}px`,
                   height:
                     type === "rain"
                       ? `${particle.size * 34}px`
@@ -743,4 +771,4 @@ function WeatherLayer({
       )}
     </div>
   );
-                      }
+            }

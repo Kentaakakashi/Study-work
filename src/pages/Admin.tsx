@@ -11,7 +11,7 @@ export default function Admin() {
       </div>
 
       <p className="text-muted-foreground">
-        Owner tools. Use responsibly. Or don’t, and karma will take a number. 🙂
+        Owner privilege 
       </p>
 
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="grid sm:grid-cols-2 gap-4">

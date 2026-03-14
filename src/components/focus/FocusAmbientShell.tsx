@@ -750,7 +750,7 @@ export default function FocusAmbientShell({
 
     const normalized = next / 100;
 
-    if ((normalized <= 0.001) {
+    if (normalized <= 0.001) {
       const existing = audioNodesRef.current[color];
       if (existing) {
         try {

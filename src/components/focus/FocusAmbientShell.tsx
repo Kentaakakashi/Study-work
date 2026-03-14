@@ -16,11 +16,14 @@ import {
   PanelRightOpen,
   PlaySquare,
 } from "lucide-react";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 type WeatherKind = "none" | "rain" | "snow" | "sakura" | "leaves" | "stars";
 type PanelTab = "weather" | "scene" | "sound" | "notes";
+type SceneGroup = "static" | "gradient" | "video";
 
-type SceneId =
+type BuiltInSceneId =
   | "zen-dark"
   | "reading-room"
   | "neon-focus"
@@ -31,17 +34,19 @@ type SceneId =
   | "rain-room";
 
 type SceneConfig = {
-  id: SceneId;
+  id: string;
   name: string;
   accent: string;
   background: string;
-  type?: "gradient" | "video";
-  videoSrc?: string;
+  group: SceneGroup;
+  sourceUrl?: string;
+  previewUrl?: string;
   posterSrc?: string;
+  isBuiltIn?: boolean;
 };
 
 type AmbientState = {
-  scene: SceneId;
+  scene: string;
   weather: WeatherKind;
   notes: string;
   sounds: {
@@ -67,25 +72,40 @@ type Particle = {
   opacity: number;
 };
 
-const STORAGE_KEY = "focus:ambient:v6";
+type AmbientSceneDoc = {
+  id: string;
+  name: string;
+  type: "static" | "video";
+  sourceUrl: string;
+  previewUrl?: string;
+  posterUrl?: string;
+  accent?: string;
+  background?: string;
+  isVisible?: boolean;
+};
+
+const STORAGE_KEY = "focus:ambient:v7";
 
 const CLOUDINARY_RAIN_ROOM_VIDEO =
   "https://res.cloudinary.com/dkfh3juaf/video/upload/f_auto,q_auto/rain-room-loop_jgosv4.mp4";
 
-const SCENES: SceneConfig[] = [
+const BUILT_IN_SCENES: SceneConfig[] = [
   {
     id: "rain-room",
     name: "Rain Room",
-    type: "video",
+    group: "video",
+    isBuiltIn: true,
     accent: "rgba(140, 220, 255, 0.20)",
     background:
       "linear-gradient(180deg, rgba(7,12,18,0.94) 0%, rgba(8,13,20,0.98) 100%)",
-    videoSrc: CLOUDINARY_RAIN_ROOM_VIDEO,
+    sourceUrl: CLOUDINARY_RAIN_ROOM_VIDEO,
+    previewUrl: CLOUDINARY_RAIN_ROOM_VIDEO,
   },
   {
     id: "zen-dark",
     name: "Zen Dark",
-    type: "gradient",
+    group: "gradient",
+    isBuiltIn: true,
     accent: "rgba(250,179,0,0.35)",
     background:
       "radial-gradient(circle at 18% 16%, rgba(250,179,0,0.18), transparent 24%), radial-gradient(circle at 82% 18%, rgba(59,130,246,0.14), transparent 28%), radial-gradient(circle at 50% 70%, rgba(168,85,247,0.10), transparent 32%), linear-gradient(180deg, #0a0d14 0%, #0f1522 100%)",
@@ -93,7 +113,8 @@ const SCENES: SceneConfig[] = [
   {
     id: "reading-room",
     name: "Reading Room",
-    type: "gradient",
+    group: "gradient",
+    isBuiltIn: true,
     accent: "rgba(255,205,150,0.35)",
     background:
       "radial-gradient(circle at 50% 18%, rgba(255,210,160,0.18), transparent 24%), radial-gradient(circle at 10% 85%, rgba(130,80,45,0.18), transparent 30%), linear-gradient(180deg, #1d1510 0%, #2b1f18 100%)",
@@ -101,7 +122,8 @@ const SCENES: SceneConfig[] = [
   {
     id: "neon-focus",
     name: "Neon Focus",
-    type: "gradient",
+    group: "gradient",
+    isBuiltIn: true,
     accent: "rgba(0,255,247,0.35)",
     background:
       "radial-gradient(circle at 20% 20%, rgba(0,255,247,0.18), transparent 24%), radial-gradient(circle at 80% 24%, rgba(255,0,153,0.17), transparent 24%), radial-gradient(circle at 50% 75%, rgba(120,90,255,0.14), transparent 30%), linear-gradient(180deg, #08111c 0%, #090d16 100%)",
@@ -109,7 +131,8 @@ const SCENES: SceneConfig[] = [
   {
     id: "blueprint",
     name: "Blueprint",
-    type: "gradient",
+    group: "gradient",
+    isBuiltIn: true,
     accent: "rgba(72,175,255,0.35)",
     background:
       "radial-gradient(circle at 50% 0%, rgba(72,175,255,0.15), transparent 26%), linear-gradient(180deg, rgba(12,30,57,0.98) 0%, rgba(8,19,38,1) 100%)",
@@ -117,7 +140,8 @@ const SCENES: SceneConfig[] = [
   {
     id: "minimal-mono",
     name: "Minimal Mono",
-    type: "gradient",
+    group: "gradient",
+    isBuiltIn: true,
     accent: "rgba(255,255,255,0.18)",
     background:
       "radial-gradient(circle at 50% 12%, rgba(255,255,255,0.08), transparent 20%), linear-gradient(180deg, #090909 0%, #151515 100%)",
@@ -125,7 +149,8 @@ const SCENES: SceneConfig[] = [
   {
     id: "forest-rain",
     name: "Forest Rain",
-    type: "gradient",
+    group: "gradient",
+    isBuiltIn: true,
     accent: "rgba(74,222,128,0.28)",
     background:
       "radial-gradient(circle at 25% 20%, rgba(74,222,128,0.16), transparent 22%), radial-gradient(circle at 80% 75%, rgba(34,197,94,0.10), transparent 28%), linear-gradient(180deg, #0d2217 0%, #08140d 100%)",
@@ -133,7 +158,8 @@ const SCENES: SceneConfig[] = [
   {
     id: "sunset",
     name: "Sunset",
-    type: "gradient",
+    group: "gradient",
+    isBuiltIn: true,
     accent: "rgba(255,160,90,0.34)",
     background:
       "radial-gradient(circle at 50% 18%, rgba(255,180,110,0.18), transparent 24%), radial-gradient(circle at 78% 28%, rgba(255,90,120,0.12), transparent 24%), linear-gradient(180deg, #3a1616 0%, #13090a 100%)",
@@ -176,10 +202,6 @@ function mulberry32(seed: number) {
   };
 }
 
-function isValidSceneId(value: unknown): value is SceneId {
-  return typeof value === "string" && SCENES.some((scene) => scene.id === value);
-}
-
 function loadAmbientState(): AmbientState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -188,7 +210,7 @@ function loadAmbientState(): AmbientState {
     const parsed = JSON.parse(raw);
 
     return {
-      scene: isValidSceneId(parsed?.scene) ? parsed.scene : DEFAULT_STATE.scene,
+      scene: typeof parsed?.scene === "string" ? parsed.scene : DEFAULT_STATE.scene,
       weather: ["none", "rain", "snow", "sakura", "leaves", "stars"].includes(parsed?.weather)
         ? parsed.weather
         : DEFAULT_STATE.weather,
@@ -233,10 +255,10 @@ function makeSeededParticles(type: WeatherKind, mobile: boolean): Particle[] {
       type === "rain"
         ? 0.9 + random() * 0.9
         : type === "snow"
-        ? 7 + random() * 5
-        : type === "stars"
-        ? 2.2 + random() * 2.2
-        : 8 + random() * 5;
+          ? 7 + random() * 5
+          : type === "stars"
+            ? 2.2 + random() * 2.2
+            : 8 + random() * 5;
 
     const drift =
       type === "rain"
@@ -339,7 +361,32 @@ function createNoiseBuffer(
   return buffer;
 }
 
+function normalizeAmbientScene(doc: AmbientSceneDoc): SceneConfig | null {
+  if (!doc?.id || !doc?.name || !doc?.sourceUrl) return null;
+  if (doc.isVisible === false) return null;
+
+  const type = doc.type === "video" ? "video" : "static";
+
+  return {
+    id: doc.id,
+    name: doc.name,
+    group: type,
+    accent: doc.accent || (type === "video" ? "rgba(140,220,255,0.18)" : "rgba(255,255,255,0.14)"),
+    background:
+      doc.background ||
+      (type === "static"
+        ? "linear-gradient(180deg, rgba(10,10,14,0.72) 0%, rgba(6,8,12,0.88) 100%)"
+        : "linear-gradient(180deg, rgba(7,12,18,0.94) 0%, rgba(8,13,20,0.98) 100%)"),
+    sourceUrl: doc.sourceUrl,
+    previewUrl: doc.previewUrl || doc.posterUrl || doc.sourceUrl,
+    posterSrc: doc.posterUrl,
+  };
+}
+
 function ScenePreview({ scene }: { scene: SceneConfig }) {
+  const badgeLabel = scene.group === "video" ? "Video" : scene.group === "static" ? "Static" : null;
+  const badgeIcon = scene.group === "video" ? <PlaySquare size={12} /> : scene.group === "static" ? <ImageIcon size={12} /> : null;
+
   return (
     <div
       className="focus-scene-preview"
@@ -349,69 +396,114 @@ function ScenePreview({ scene }: { scene: SceneConfig }) {
         background: scene.background,
       }}
     >
-      {scene.type === "video" && scene.videoSrc && (
-        <>
-          <video
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            poster={scene.posterSrc}
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              opacity: 0.88,
-            }}
-          >
-            <source src={scene.videoSrc} type="video/mp4" />
-          </video>
+      {scene.group === "video" && scene.sourceUrl && (
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          poster={scene.posterSrc || scene.previewUrl}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            opacity: 0.88,
+          }}
+        >
+          <source src={scene.sourceUrl} type="video/mp4" />
+        </video>
+      )}
 
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.28) 100%)",
-            }}
-          />
+      {scene.group === "static" && scene.sourceUrl && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: `url(${scene.sourceUrl})`,
+            backgroundPosition: "center",
+            backgroundSize: "cover",
+            opacity: 0.92,
+          }}
+        />
+      )}
 
-          <div
-            style={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "4px 8px",
-              borderRadius: 999,
-              background: "rgba(8,8,12,0.65)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              color: "rgba(255,255,255,0.88)",
-              fontSize: 11,
-              fontWeight: 700,
-              zIndex: 2,
-            }}
-          >
-            <PlaySquare size={12} />
-            Video
-          </div>
-        </>
+      {(scene.group === "video" || scene.group === "static") && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.28) 100%)",
+          }}
+        />
+      )}
+
+      {badgeLabel && badgeIcon && (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 8px",
+            borderRadius: 999,
+            background: "rgba(8,8,12,0.65)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            color: "rgba(255,255,255,0.88)",
+            fontSize: 11,
+            fontWeight: 700,
+            zIndex: 2,
+          }}
+        >
+          {badgeIcon}
+          {badgeLabel}
+        </div>
       )}
     </div>
   );
 }
 
-function AmbientVideoLayer({
-  scene,
-}: {
-  scene: SceneConfig;
-}) {
-  if (scene.type !== "video" || !scene.videoSrc) return null;
+function AmbientStaticLayer({ scene }: { scene: SceneConfig }) {
+  if (scene.group !== "static" || !scene.sourceUrl) return null;
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 0,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `url(${scene.sourceUrl})`,
+          backgroundPosition: "center",
+          backgroundSize: "cover",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(180deg, rgba(4,7,12,0.28) 0%, rgba(6,10,18,0.46) 100%)",
+        }}
+      />
+    </div>
+  );
+}
+
+function AmbientVideoLayer({ scene }: { scene: SceneConfig }) {
+  if (scene.group !== "video" || !scene.sourceUrl) return null;
 
   return (
     <div
@@ -429,7 +521,7 @@ function AmbientVideoLayer({
         loop
         playsInline
         preload="metadata"
-        poster={scene.posterSrc}
+        poster={scene.posterSrc || scene.previewUrl}
         style={{
           position: "absolute",
           inset: 0,
@@ -438,7 +530,7 @@ function AmbientVideoLayer({
           objectFit: "cover",
         }}
       >
-        <source src={scene.videoSrc} type="video/mp4" />
+        <source src={scene.sourceUrl} type="video/mp4" />
       </video>
 
       <div
@@ -453,6 +545,52 @@ function AmbientVideoLayer({
   );
 }
 
+function GallerySectionTabs({
+  section,
+  onChange,
+}: {
+  section: SceneGroup;
+  onChange: (section: SceneGroup) => void;
+}) {
+  const tabs: SceneGroup[] = ["static", "gradient", "video"];
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+        gap: 8,
+        marginBottom: 12,
+      }}
+    >
+      {tabs.map((tab) => {
+        const active = section === tab;
+        return (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => onChange(tab)}
+            style={{
+              minHeight: 40,
+              borderRadius: 14,
+              border: active
+                ? "1px solid rgba(255, 179, 0, 0.24)"
+                : "1px solid rgba(255,255,255,0.08)",
+              background: active ? "rgba(255,179,0,0.14)" : "rgba(255,255,255,0.04)",
+              color: active ? "rgba(255,223,160,0.98)" : "rgba(255,255,255,0.78)",
+              fontSize: 12,
+              fontWeight: 700,
+              textTransform: "capitalize",
+            }}
+          >
+            {tab}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function FocusAmbientShell({
   children,
   onOpenMusic,
@@ -461,6 +599,8 @@ export default function FocusAmbientShell({
   const [state, setState] = useState<AmbientState>(() => loadAmbientState());
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PanelTab>("weather");
+  const [gallerySection, setGallerySection] = useState<SceneGroup>("video");
+  const [customScenes, setCustomScenes] = useState<SceneConfig[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioNodesRef = useRef<
     Partial<
@@ -474,6 +614,19 @@ export default function FocusAmbientShell({
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "ambientScenes"), (snap) => {
+      const next = snap.docs
+        .map((item) => normalizeAmbientScene({ id: item.id, ...(item.data() as Omit<AmbientSceneDoc, "id">) }))
+        .filter((item): item is SceneConfig => Boolean(item));
+
+      next.sort((a, b) => a.name.localeCompare(b.name));
+      setCustomScenes(next);
+    });
+
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -493,10 +646,22 @@ export default function FocusAmbientShell({
     };
   }, []);
 
-  const scene = useMemo(
-    () => SCENES.find((item) => item.id === state.scene) ?? SCENES[0],
-    [state.scene]
-  );
+  const allScenes = useMemo(() => [...BUILT_IN_SCENES, ...customScenes], [customScenes]);
+
+  const scene = useMemo(() => {
+    return allScenes.find((item) => item.id === state.scene) ?? BUILT_IN_SCENES[0];
+  }, [allScenes, state.scene]);
+
+  useEffect(() => {
+    const exists = allScenes.some((item) => item.id === state.scene);
+    if (!exists) {
+      setState((prev) => ({ ...prev, scene: DEFAULT_STATE.scene }));
+    }
+  }, [allScenes, state.scene]);
+
+  const galleryScenes = useMemo(() => {
+    return allScenes.filter((item) => item.group === gallerySection);
+  }, [allScenes, gallerySection]);
 
   const particles = useMemo(
     () => makeSeededParticles(state.weather, isMobile),
@@ -581,7 +746,7 @@ export default function FocusAmbientShell({
     }));
   }
 
-  function setScene(sceneId: SceneId) {
+  function setScene(sceneId: string) {
     setState((prev) => ({
       ...prev,
       scene: sceneId,
@@ -598,10 +763,11 @@ export default function FocusAmbientShell({
   return (
     <div className="focus-ambient-shell">
       <div
-        className="focus-ambient-bg"
+         className="focus-ambient-bg"
         style={{ background: scene.background }}
       />
 
+      <AmbientStaticLayer scene={scene} />
       <AmbientVideoLayer scene={scene} />
 
       <div
@@ -613,9 +779,7 @@ export default function FocusAmbientShell({
 
       <WeatherLayer type={state.weather} particles={particles} />
 
-      <div className="focus-ambient-content">
-        {children}
-      </div>
+      <div className="focus-ambient-content">{children}</div>
 
       <div className="focus-ambient-launcher-wrap">
         {menuOpen && (
@@ -717,21 +881,40 @@ export default function FocusAmbientShell({
               )}
 
               {activeTab === "scene" && (
-                <div className="focus-scene-list">
-                  {SCENES.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setScene(item.id)}
-                      className={`focus-scene-card ${state.scene === item.id ? "is-active" : ""}`}
+                <div>
+                  <GallerySectionTabs section={gallerySection} onChange={setGallerySection} />
+
+                  {galleryScenes.length === 0 ? (
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.035)",
+                        padding: "1rem",
+                        color: "rgba(255,255,255,0.72)",
+                        fontSize: 14,
+                      }}
                     >
-                      <ScenePreview scene={item} />
-                      <div className="focus-scene-meta">
-                        <span>{item.name}</span>
-                        {state.scene === item.id && <span className="focus-scene-live">Live</span>}
-                      </div>
-                    </button>
-                  ))}
+                      No {gallerySection} backgrounds yet. Add some from the admin ambient scene manager.
+                    </div>
+                  ) : (
+                    <div className="focus-scene-list">
+                      {galleryScenes.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setScene(item.id)}
+                          className={`focus-scene-card ${state.scene === item.id ? "is-active" : ""}`}
+                        >
+                          <ScenePreview scene={item} />
+                          <div className="focus-scene-meta">
+                            <span>{item.name}</span>
+                            {state.scene === item.id && <span className="focus-scene-live">Live</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -912,4 +1095,4 @@ function WeatherLayer({
       )}
     </div>
   );
-  }
+              }

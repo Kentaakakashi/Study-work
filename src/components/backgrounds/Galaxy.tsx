@@ -326,23 +326,26 @@ export default function Galaxy({
       targetMouseActive.current = 1.0;
     }
 
-    function handleMouseLeave() {
-      targetMouseActive.current = 0.0;
-    }
+    function handleMouseMove(e: MouseEvent) {
+  const rect = ctn.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = 1.0 - (e.clientY - rect.top) / rect.height;
 
-    if (mouseInteraction) {
-      ctn.addEventListener("mousemove", handleMouseMove);
-      ctn.addEventListener("mouseleave", handleMouseLeave);
-    }
+  targetMousePos.current = {
+    x: Math.max(0, Math.min(1, x)),
+    y: Math.max(0, Math.min(1, y)),
+  };
+  targetMouseActive.current = 1.0;
+}
 
-    return () => {
-      cancelAnimationFrame(animateId);
-      window.removeEventListener("resize", resize);
+function handleMouseLeave() {
+  targetMouseActive.current = 0.0;
+}
 
-      if (mouseInteraction) {
-        ctn.removeEventListener("mousemove", handleMouseMove);
-        ctn.removeEventListener("mouseleave", handleMouseLeave);
-      }
+if (mouseInteraction) {
+  window.addEventListener("mousemove", handleMouseMove);
+  window.addEventListener("mouseout", handleMouseLeave);
+}
 
       if (ctn.contains(gl.canvas)) {
         ctn.removeChild(gl.canvas);

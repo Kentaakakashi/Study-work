@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Shield, Ticket, UserX } from "lucide-react";
+import { ImagePlus, Shield, Ticket, UserX } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Admin() {
@@ -30,6 +30,16 @@ export default function Admin() {
           </div>
           <p className="text-sm text-muted-foreground mt-2">
             Paste a UID and nuke their Study Zen existence. Won’t work on owners.
+          </p>
+        </Link>
+
+        <Link to="/admin/ambient-scenes" className="glass-card p-6 rounded-3xl hover:bg-secondary/10 transition block">
+          <div className="flex items-center gap-2">
+            <ImagePlus className="w-5 h-5 text-primary" />
+            <p className="font-semibold">Ambient Scene Manager</p>
+          </div>
+          <p className="text-sm text-muted-foreground mt-2">
+            Upload static backgrounds and video loops for the Focus gallery.
           </p>
         </Link>
 

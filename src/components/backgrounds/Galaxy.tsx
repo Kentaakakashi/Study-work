@@ -220,6 +220,7 @@ export default function Galaxy({
   useEffect(() => {
     if (!ctnDom.current) return;
     const ctn = ctnDom.current;
+
     const renderer = new Renderer({
       alpha: transparent,
       premultipliedAlpha: false,
@@ -239,6 +240,7 @@ export default function Galaxy({
     function resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
       renderer.setSize(ctn.offsetWidth * dpr, ctn.offsetHeight * dpr);
+
       if (program) {
         program.uniforms.uResolution.value = new Color(
           gl.canvas.width,
@@ -252,6 +254,7 @@ export default function Galaxy({
     resize();
 
     const geometry = new Triangle(gl);
+
     program = new Program(gl, {
       vertex: vertexShader,
       fragment: fragmentShader,
@@ -304,7 +307,6 @@ export default function Galaxy({
         (targetMousePos.current.x - smoothMousePos.current.x) * lerpFactor;
       smoothMousePos.current.y +=
         (targetMousePos.current.y - smoothMousePos.current.y) * lerpFactor;
-
       smoothMouseActive.current +=
         (targetMouseActive.current - smoothMouseActive.current) * lerpFactor;
 
@@ -322,30 +324,34 @@ export default function Galaxy({
       const rect = ctn.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
       const y = 1.0 - (e.clientY - rect.top) / rect.height;
-      targetMousePos.current = { x, y };
+
+      targetMousePos.current = {
+        x: Math.max(0, Math.min(1, x)),
+        y: Math.max(0, Math.min(1, y)),
+      };
       targetMouseActive.current = 1.0;
     }
 
-    function handleMouseMove(e: MouseEvent) {
-  const rect = ctn.getBoundingClientRect();
-  const x = (e.clientX - rect.left) / rect.width;
-  const y = 1.0 - (e.clientY - rect.top) / rect.height;
+    function handleMouseOut(e: MouseEvent) {
+      const related = e.relatedTarget as Node | null;
+      if (!related) {
+        targetMouseActive.current = 0.0;
+      }
+    }
 
-  targetMousePos.current = {
-    x: Math.max(0, Math.min(1, x)),
-    y: Math.max(0, Math.min(1, y)),
-  };
-  targetMouseActive.current = 1.0;
-}
+    if (mouseInteraction) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseout", handleMouseOut);
+    }
 
-function handleMouseLeave() {
-  targetMouseActive.current = 0.0;
-}
+    return () => {
+      cancelAnimationFrame(animateId);
+      window.removeEventListener("resize", resize);
 
-if (mouseInteraction) {
-  window.addEventListener("mousemove", handleMouseMove);
-  window.addEventListener("mouseout", handleMouseLeave);
-}
+      if (mouseInteraction) {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseout", handleMouseOut);
+      }
 
       if (ctn.contains(gl.canvas)) {
         ctn.removeChild(gl.canvas);
@@ -373,4 +379,4 @@ if (mouseInteraction) {
   ]);
 
   return <div ref={ctnDom} className={`relative h-full w-full ${className}`} {...rest} />;
-            }
+}

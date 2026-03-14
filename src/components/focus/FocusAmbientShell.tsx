@@ -516,6 +516,7 @@ function AmbientVideoLayer({ scene }: { scene: SceneConfig }) {
       aria-hidden="true"
     >
       <video
+        key={scene.id}
         autoPlay
         muted
         loop

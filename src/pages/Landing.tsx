@@ -90,7 +90,7 @@ const Landing = () => {
           saturation={0}
           hueShift={140}
           twinkleIntensity={0.15}
-          rotationSpeed={0.4}
+          rotationSpeed={0.1}
           repulsionStrength={5}
           autoCenterRepulsion={0}
           starSpeed={0.25}

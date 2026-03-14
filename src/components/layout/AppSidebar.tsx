@@ -1,61 +1,74 @@
-import { NavLink } from "react-router-dom";
-import {
-  Home,
-  Flame,
-  Calendar,
-  Users,
-  Trophy,
-  Settings,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Outlet, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useState } from "react";
+import AppSidebar from "./AppSidebar";
+import Topbar from "./Topbar";
+import MobileNav from "./MobileNav";
+import BackgroundBlobs from "./BackgroundBlobs";
+import MobileSidebar from "./MobileSidebar";
+import { useTheme } from "@/theme/ThemeProvider";
 
-interface Props {
-  collapsed?: boolean;
-}
+const SIDEBAR_STORAGE_KEY = "studyzen:sidebar-collapsed";
 
-const nav = [
-  { icon: Home, label: "Home", href: "/home" },
-  { icon: Flame, label: "Focus", href: "/focus" },
-  { icon: Calendar, label: "Planner", href: "/planner" },
-  { icon: Users, label: "Community", href: "/community" },
-  { icon: Trophy, label: "Leaderboard", href: "/leaderboard" },
-  { icon: Settings, label: "Settings", href: "/settings" },
-];
+const AppLayout = () => {
+  const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const { theme } = useTheme();
 
-export default function AppSidebar({ collapsed = false }: Props) {
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
+    } catch {
+      //
+    }
+  }, [sidebarCollapsed]);
+
+  // Higher motionSpeed = faster UI -> shorter durations
+  const base = 0.25;
+  const duration = Math.max(0.14, Math.min(0.45, base / (theme.motionSpeed || 1)));
+
   return (
-    <aside
-      className={cn(
-        "h-full border-r bg-background transition-all duration-300 shrink-0",
-        collapsed ? "w-[64px]" : "w-[240px]"
-      )}
-    >
-      <div className="flex h-full flex-col gap-2 pt-4">
-        {nav.map((item) => {
-          const Icon = item.icon;
+    <div className="min-h-screen flex w-full relative">
+      <BackgroundBlobs />
 
-          return (
-            <NavLink
-              key={item.href}
-              to={item.href}
-              className={({ isActive }) =>
-                cn(
-                  "mx-2 flex items-center gap-3 rounded-md px-4 py-2 transition",
-                  "hover:bg-muted",
-                  isActive && "bg-muted"
-                )
-              }
-              title={collapsed ? item.label : undefined}
+      <AppSidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+      />
+
+      {/* ✅ Mobile drawer */}
+      <MobileSidebar open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+
+      <div className="flex-1 flex flex-col min-h-screen min-w-0">
+        <Topbar onMenuToggle={() => setMobileMenuOpen((v) => !v)} />
+
+        <main className="app-main flex-1 pb-20 md:pb-6 overflow-x-hidden min-w-0">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration, ease: "easeOut" }}
+              onClick={() => setMobileMenuOpen(false)}
+              className="min-w-0"
             >
-              <Icon size={18} className="shrink-0" />
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
+        </main>
 
-              {!collapsed && (
-                <span className="text-sm font-medium">{item.label}</span>
-              )}
-            </NavLink>
-          );
-        })}
+        <MobileNav />
       </div>
-    </aside>
+    </div>
   );
-   }
+};
+
+export default AppLayout;

@@ -38,7 +38,7 @@ type SignerResponse = {
 
 async function getOwnerToken() {
   const current = auth.currentUser;
-  if (!current) throw new Error("You need to be logged in as the owner.");
+  if (!current) throw new Error("Brother you dont have an owner role.");
   return current.getIdToken();
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Zap, BookOpen, Users, Brain, Timer, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import BackgroundBlobs from "@/components/layout/BackgroundBlobs";
+import Galaxy from "@/components/backgrounds/Galaxy";
 import { useAuth } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -81,7 +81,23 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      <BackgroundBlobs />
+      <div className="absolute inset-0 z-0">
+        <Galaxy
+          mouseRepulsion
+          mouseInteraction
+          density={1}
+          glowIntensity={0.3}
+          saturation={0}
+          hueShift={140}
+          twinkleIntensity={0.3}
+          rotationSpeed={0.1}
+          repulsionStrength={2}
+          autoCenterRepulsion={0}
+          starSpeed={0.5}
+          speed={1}
+        />
+        <div className="absolute inset-0 bg-black/40" />
+      </div>
 
       <div className="relative z-10 min-h-screen flex flex-col">
         <header className="flex items-center justify-between px-6 md:px-12 py-5">

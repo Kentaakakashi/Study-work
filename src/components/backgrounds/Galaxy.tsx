@@ -237,8 +237,8 @@ export default function Galaxy({
     let program: Program;
 
     function resize() {
-      const scale = 1;
-      renderer.setSize(ctn.offsetWidth * scale, ctn.offsetHeight * scale);
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+      renderer.setSize(ctn.offsetWidth * dpr, ctn.offsetHeight * dpr);
       if (program) {
         program.uniforms.uResolution.value = new Color(
           gl.canvas.width,
@@ -299,7 +299,7 @@ export default function Galaxy({
         program.uniforms.uStarSpeed.value = (t * 0.001 * starSpeed) / 10.0;
       }
 
-      const lerpFactor = 0.05;
+      const lerpFactor = 0.12;
       smoothMousePos.current.x +=
         (targetMousePos.current.x - smoothMousePos.current.x) * lerpFactor;
       smoothMousePos.current.y +=

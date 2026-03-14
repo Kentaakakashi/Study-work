@@ -1,119 +1,49 @@
-import { NavLink, useLocation } from "react-router-dom";
-import {
-  Home,
-  Timer,
-  CalendarDays,
-  Users,
-  UserPlus,
-  BarChart3,
-  Bot,
-  Settings,
-  Zap,
-  Bell,
-  Award,
-  Trophy,
-  LifeBuoy,
-  Shield,
-} from "lucide-react";
-import { useAuth } from "@/lib/auth";
-import { isOwnerUid } from "@/lib/roles";
+"use client";
 
-type NavItem = {
-  title: string;
-  path: string;
-  icon: any;
-  ownerOnly?: boolean;
-};
+import Link from "next/link";
+import { Home, Flame, Calendar, Users, Trophy, Settings } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const navItems: NavItem[] = [
-  { title: "Home", path: "/home", icon: Home },
-  { title: "Focus", path: "/focus/pomodoro", icon: Timer },
-  { title: "Planner", path: "/planner", icon: CalendarDays },
-  { title: "Community", path: "/community", icon: Users },
-  { title: "Friends", path: "/friends", icon: UserPlus },
-  { title: "Stats", path: "/stats", icon: BarChart3 },
-  { title: "Leaderboard", path: "/leaderboard", icon: Trophy },
-  { title: "Badges", path: "/badges", icon: Award },
-  { title: "Notifications", path: "/notifications", icon: Bell },
-  { title: "AI Tutor", path: "/ai", icon: Bot },
+interface Props {
+  collapsed?: boolean;
+}
 
-  // ✅ Support for everyone
-  { title: "Support", path: "/support", icon: LifeBuoy },
-
-  // ✅ Admin for owners only
-  { title: "Admin", path: "/admin", icon: Shield, ownerOnly: true },
-
-  { title: "Settings", path: "/settings", icon: Settings },
+const nav = [
+  { icon: Home, label: "Home", href: "/" },
+  { icon: Flame, label: "Focus", href: "/focus" },
+  { icon: Calendar, label: "Planner", href: "/planner" },
+  { icon: Users, label: "Community", href: "/community" },
+  { icon: Trophy, label: "Leaderboard", href: "/leaderboard" },
+  { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
-const AppSidebar = () => {
-  const location = useLocation();
-  const { user, profile } = useAuth();
-
-  const isOwner = (profile?.role === "owner") || isOwnerUid(user?.uid);
-
-  const isActive = (path: string) => {
-    if (path === "/focus/pomodoro") return location.pathname.startsWith("/focus");
-    if (path === "/community") return location.pathname.startsWith("/community");
-    if (path === "/support") return location.pathname.startsWith("/support");
-    if (path === "/admin") return location.pathname.startsWith("/admin");
-    return location.pathname === path;
-  };
-
-  const visibleItems = navItems.filter((i) => !i.ownerOnly || isOwner);
-
+export default function AppSidebar({ collapsed }: Props) {
   return (
-    <aside className="hidden md:flex flex-col w-64 h-screen glass-card border-r border-border/50 sticky top-0 z-40">
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-border/30">
-        <div className="w-9 h-9 rounded-lg flex items-center justify-center glow-button p-0">
-          <Zap className="w-5 h-5" />
-        </div>
-        <span className="text-lg font-bold tracking-tight text-gradient">Study Zen</span>
-      </div>
+    <aside
+      className={cn(
+        "h-full border-r bg-background transition-all duration-300",
+        collapsed ? "w-[64px]" : "w-[240px]"
+      )}
+    >
+      <div className="flex flex-col h-full pt-4 gap-2">
+        {nav.map((item) => {
+          const Icon = item.icon;
 
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {visibleItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={() =>
-              `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative ${
-                isActive(item.path)
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-              }`
-            }
-          >
-            {isActive(item.path) && (
-              <div className="absolute left-0 w-0.5 h-6 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.5)]" />
-            )}
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition rounded-md mx-2"
+            >
+              <Icon size={18} />
 
-            <item.icon
-              className={`w-5 h-5 transition-transform duration-200 group-hover:scale-110 ${
-                isActive(item.path) ? "text-primary" : ""
-              }`}
-            />
-
-            <span className="flex items-center gap-2">
-              {item.title}
-              {item.ownerOnly && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 border border-primary/25 text-primary">
-                  OWNER
-                </span>
+              {!collapsed && (
+                <span className="text-sm font-medium">{item.label}</span>
               )}
-            </span>
-          </NavLink>
-        ))}
-      </nav>
-
-      <div className="px-4 py-4 border-t border-border/30">
-        <div className="glass-card p-3 rounded-lg text-center">
-          <p className="text-xs text-muted-foreground">Study Zen</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Focus • Plan • Grow</p>
-        </div>
+            </Link>
+          );
+        })}
       </div>
     </aside>
   );
-};
-
-export default AppSidebar;
+}

@@ -85,16 +85,16 @@ const Landing = () => {
         <Galaxy
           mouseRepulsion
           mouseInteraction
-          density={0.6}
-          glowIntensity={0.18}
+          density={1}
+          glowIntensity={0.3}
           saturation={0}
           hueShift={140}
-          twinkleIntensity={0.15}
+          twinkleIntensity={0.3}
           rotationSpeed={0.1}
-          repulsionStrength={5}
+          repulsionStrength={2}
           autoCenterRepulsion={0}
-          starSpeed={0.25}
-          speed={0.5}
+          starSpeed={0.5}
+          speed={1}
           className="pointer-events-auto"
         />
         <div className="absolute inset-0 bg-black/40" />

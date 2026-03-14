@@ -37,6 +37,7 @@ import Admin from "@/pages/Admin";
 import AdminTickets from "@/pages/AdminTickets";
 import AdminTicket from "@/pages/AdminTicket";
 import AdminUserRemoval from "@/pages/AdminUserRemoval";
+import AdminAmbientScenes from "@/pages/AdminAmbientScenes";
 
 import Profile from "@/pages/Profile";
 import NotFound from "@/pages/NotFound";
@@ -159,6 +160,14 @@ export default function App() {
               </OwnerRoute>
             }
           />
+          <Route
+            path="/admin/ambient-scenes"
+            element={
+              <OwnerRoute>
+                <AdminAmbientScenes />
+              </OwnerRoute>
+            }
+          />
         </Route>
 
         <Route
@@ -182,4 +191,6 @@ export default function App() {
     </>
   );
 }
+
+
           

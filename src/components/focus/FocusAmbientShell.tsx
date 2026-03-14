@@ -87,7 +87,7 @@ type AmbientSceneDoc = {
 const STORAGE_KEY = "focus:ambient:v7";
 
 const CLOUDINARY_RAIN_ROOM_VIDEO =
-  "https://res.cloudinary.com/dkfh3juaf/video/upload/f_auto,q_auto/rain-room-loop_jgosv4.mp4";
+  "https://res.cloudinary.com/dkfh3juaf/video/upload/f_auto,q_auto:good,vc_auto/rain-room-loop_jgosv4.mp4";
 
 const BUILT_IN_SCENES: SceneConfig[] = [
   {
@@ -224,6 +224,44 @@ function loadAmbientState(): AmbientState {
   } catch {
     return DEFAULT_STATE;
   }
+}
+
+function optimizeCloudinaryMediaUrl(
+  url?: string,
+  kind: "video" | "image" = "image"
+) {
+  if (!url || !url.includes("res.cloudinary.com")) return url || "";
+
+  const uploadMarker =
+    kind === "video" ? "/video/upload/" : "/image/upload/";
+
+  if (!url.includes(uploadMarker)) return url;
+
+  const qualitySegment =
+    kind === "video"
+      ? "f_auto,q_auto:good,vc_auto"
+      : "f_auto,q_auto:good";
+
+  const escapedMarker = uploadMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const transformRegex = new RegExp(
+    `${escapedMarker}(?:[^/]+/)?`,
+    "i"
+  );
+
+  return url.replace(transformRegex, `${uploadMarker}${qualitySegment}/`);
+}
+
+function getSceneSourceUrl(scene: SceneConfig) {
+  if (!scene.sourceUrl) return "";
+  return optimizeCloudinaryMediaUrl(
+    scene.sourceUrl,
+    scene.group === "video" ? "video" : "image"
+  );
+}
+
+function getScenePreviewUrl(scene: SceneConfig) {
+  const raw = scene.previewUrl || scene.posterSrc || scene.sourceUrl || "";
+  return optimizeCloudinaryMediaUrl(raw, "image");
 }
 
 function makeSeededParticles(type: WeatherKind, mobile: boolean): Particle[] {
@@ -386,6 +424,8 @@ function normalizeAmbientScene(doc: AmbientSceneDoc): SceneConfig | null {
 function ScenePreview({ scene }: { scene: SceneConfig }) {
   const badgeLabel = scene.group === "video" ? "Video" : scene.group === "static" ? "Static" : null;
   const badgeIcon = scene.group === "video" ? <PlaySquare size={12} /> : scene.group === "static" ? <ImageIcon size={12} /> : null;
+  const sceneSourceUrl = getSceneSourceUrl(scene);
+  const scenePreviewUrl = getScenePreviewUrl(scene);
 
   return (
     <div
@@ -396,14 +436,15 @@ function ScenePreview({ scene }: { scene: SceneConfig }) {
         background: scene.background,
       }}
     >
-      {scene.group === "video" && scene.sourceUrl && (
+      {scene.group === "video" && sceneSourceUrl && (
         <video
+          key={scene.id}
           autoPlay
           muted
           loop
           playsInline
           preload="metadata"
-          poster={scene.posterSrc || scene.previewUrl}
+          poster={scenePreviewUrl}
           style={{
             position: "absolute",
             inset: 0,
@@ -413,16 +454,16 @@ function ScenePreview({ scene }: { scene: SceneConfig }) {
             opacity: 0.88,
           }}
         >
-          <source src={scene.sourceUrl} type="video/mp4" />
+          <source src={sceneSourceUrl} type="video/mp4" />
         </video>
       )}
 
-      {scene.group === "static" && scene.sourceUrl && (
+      {scene.group === "static" && sceneSourceUrl && (
         <div
           style={{
             position: "absolute",
             inset: 0,
-            backgroundImage: `url(${scene.sourceUrl})`,
+            backgroundImage: `url(${sceneSourceUrl})`,
             backgroundPosition: "center",
             backgroundSize: "cover",
             opacity: 0.92,
@@ -469,7 +510,8 @@ function ScenePreview({ scene }: { scene: SceneConfig }) {
 }
 
 function AmbientStaticLayer({ scene }: { scene: SceneConfig }) {
-  if (scene.group !== "static" || !scene.sourceUrl) return null;
+  const sceneSourceUrl = getSceneSourceUrl(scene);
+  if (scene.group !== "static" || !sceneSourceUrl) return null;
 
   return (
     <div
@@ -485,7 +527,7 @@ function AmbientStaticLayer({ scene }: { scene: SceneConfig }) {
         style={{
           position: "absolute",
           inset: 0,
-          backgroundImage: `url(${scene.sourceUrl})`,
+          backgroundImage: `url(${sceneSourceUrl})`,
           backgroundPosition: "center",
           backgroundSize: "cover",
         }}
@@ -503,7 +545,10 @@ function AmbientStaticLayer({ scene }: { scene: SceneConfig }) {
 }
 
 function AmbientVideoLayer({ scene }: { scene: SceneConfig }) {
-  if (scene.group !== "video" || !scene.sourceUrl) return null;
+  const sceneSourceUrl = getSceneSourceUrl(scene);
+  const scenePreviewUrl = getScenePreviewUrl(scene);
+
+  if (scene.group !== "video" || !sceneSourceUrl) return null;
 
   return (
     <div
@@ -522,7 +567,7 @@ function AmbientVideoLayer({ scene }: { scene: SceneConfig }) {
         loop
         playsInline
         preload="metadata"
-        poster={scene.posterSrc || scene.previewUrl}
+        poster={scenePreviewUrl}
         style={{
           position: "absolute",
           inset: 0,
@@ -531,7 +576,7 @@ function AmbientVideoLayer({ scene }: { scene: SceneConfig }) {
           objectFit: "cover",
         }}
       >
-        <source src={scene.sourceUrl} type="video/mp4" />
+        <source src={sceneSourceUrl} type="video/mp4" />
       </video>
 
       <div
@@ -705,7 +750,7 @@ export default function FocusAmbientShell({
 
     const normalized = next / 100;
 
-    if (normalized <= 0.001) {
+    if ((normalized <= 0.001) {
       const existing = audioNodesRef.current[color];
       if (existing) {
         try {
@@ -764,7 +809,7 @@ export default function FocusAmbientShell({
   return (
     <div className="focus-ambient-shell">
       <div
-         className="focus-ambient-bg"
+        className="focus-ambient-bg"
         style={{ background: scene.background }}
       />
 
@@ -1096,4 +1141,4 @@ function WeatherLayer({
       )}
     </div>
   );
-              }
+    }

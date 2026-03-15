@@ -111,6 +111,13 @@ export default function Settings() {
     () => THEMES.map((t) => ({ id: t.id, name: t.name })),
     []
   );
+  const sidebarThemeOptions = useMemo(
+  () => [
+    { id: "classic", name: "Classic Sidebar" },
+    { id: "shadcn", name: "Shadcn Sidebar" },
+  ],
+  []
+);
 
   useEffect(() => {
     let cancelled = false;

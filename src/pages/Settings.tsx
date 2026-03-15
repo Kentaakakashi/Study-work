@@ -88,7 +88,7 @@ function cn(...classes: Array<string | undefined | false | null>) {
 export default function Settings() {
   const nav = useNavigate();
   const { user, logout } = useAuth();
-  const { themeId, setThemeId } = useTheme();
+  const { themeId, setThemeId, sidebarTheme, setSidebarTheme } = useTheme();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

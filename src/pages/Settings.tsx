@@ -397,6 +397,52 @@ export default function Settings() {
               </div>
 
               <div className="grid gap-2">
+  <Label>Theme</Label>
+  <Select
+    value={themeId}
+    onValueChange={(v) => {
+      setThemeId(v as ThemeId);
+      toast.success(`Theme: ${themeOptions.find((t) => t.id === v)?.name ?? v}`);
+    }}
+  >
+    <SelectTrigger className="w-full">
+      <SelectValue placeholder="Choose a theme" />
+    </SelectTrigger>
+    <SelectContent>
+      {themeOptions.map((t) => (
+        <SelectItem key={t.id} value={t.id}>
+          {t.name}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+</div>
+
+<div className="grid gap-2">
+  <Label>Sidebar Theme</Label>
+  <Select
+    value={sidebarTheme}
+    onValueChange={(v) => {
+      setSidebarTheme(v as "classic" | "shadcn");
+      toast.success(
+        `Sidebar: ${sidebarThemeOptions.find((t) => t.id === v)?.name ?? v}`
+      );
+    }}
+  >
+    <SelectTrigger className="w-full">
+      <SelectValue placeholder="Choose a sidebar theme" />
+    </SelectTrigger>
+    <SelectContent>
+      {sidebarThemeOptions.map((t) => (
+        <SelectItem key={t.id} value={t.id}>
+          {t.name}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+</div>
+
+              <div className="grid gap-2">
                 <Label>Preview</Label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-secondary/30 p-4">

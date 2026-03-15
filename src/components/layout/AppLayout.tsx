@@ -1,7 +1,8 @@
-import { Outlet, useLocation } from "react-router-dom";
+                import { Outlet, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import AppSidebar from "./AppSidebar";
+import AppSidebarShadcn from "./AppSidebarShadcn";
 import Topbar from "./Topbar";
 import MobileNav from "./MobileNav";
 import BackgroundBlobs from "./BackgroundBlobs";
@@ -21,7 +22,8 @@ const AppLayout = () => {
       return false;
     }
   });
-  const { theme } = useTheme();
+
+  const { theme, sidebarTheme } = useTheme();
 
   useEffect(() => {
     try {
@@ -33,6 +35,8 @@ const AppLayout = () => {
 
   const base = 0.25;
   const duration = Math.max(0.14, Math.min(0.45, base / (theme.motionSpeed || 1)));
+
+  const SidebarComponent = sidebarTheme === "shadcn" ? AppSidebarShadcn : AppSidebar;
 
   return (
     <ClickSpark
@@ -47,7 +51,7 @@ const AppLayout = () => {
       <div className="min-h-screen flex w-full relative">
         <BackgroundBlobs />
 
-        <AppSidebar
+        <SidebarComponent
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
         />

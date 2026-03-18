@@ -12,6 +12,7 @@ import OwnerRoute from "@/components/OwnerRoute";
 import Landing from "@/pages/Landing";
 import Onboarding from "@/pages/Onboarding";
 
+
 // Pages (main)
 import Home from "@/pages/Home";
 import Planner from "@/pages/Planner";
@@ -41,6 +42,7 @@ import AdminAmbientScenes from "@/pages/AdminAmbientScenes";
 
 import Profile from "@/pages/Profile";
 import NotFound from "@/pages/NotFound";
+const SITE_CLOSED = true;
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();

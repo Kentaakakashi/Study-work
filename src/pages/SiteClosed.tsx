@@ -16,7 +16,7 @@ export default function SiteClosed() {
         </p>
 
         <div className="mt-8 rounded-2xl border border-border/50 bg-secondary/30 px-5 py-4 text-sm text-muted-foreground">
-        
+         tbh I shouldn't have even made this ma fault 
         </div>
       </div>
     </div>

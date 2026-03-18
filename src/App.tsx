@@ -75,7 +75,11 @@ export default function App() {
   const { user, loading, needsOnboarding } = useAuth();
 
   if (loading) return <div className="min-h-screen bg-background" />;
-
+   
+  if (SITE_CLOSED) {
+  return <SiteClosed />;
+   }
+  
   return (
     <>
       <EmailVerificationGate />

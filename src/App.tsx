@@ -43,7 +43,7 @@ import AdminAmbientScenes from "@/pages/AdminAmbientScenes";
 import Profile from "@/pages/Profile";
 import NotFound from "@/pages/NotFound";
 import SiteClosed from "@/pages/SiteClosed";
-const SITE_CLOSED = true;
+const SITE_CLOSED = false;
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();

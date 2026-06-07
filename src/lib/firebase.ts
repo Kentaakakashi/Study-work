@@ -7,12 +7,12 @@ import { getFirestore } from "firebase/firestore";
  * so all existing Firestore collections keep working.
  */
 const firebaseConfig = {
-  apiKey: "AIzaSyCQZ36IQVFEm-rqyD0WlPO23Sf8Lih5Fo8",
-  authDomain: "study-zone-438c4.firebaseapp.com",
-  projectId: "study-zone-438c4",
-  storageBucket: "study-zone-438c4.firebasestorage.app",
-  messagingSenderId: "320895535749",
-  appId: "1:320895535749:web:cab35a214ef7c22ae2f7ec",
+  apiKey: "AIzaSyAgZTTRP2hbvaE2yU-qMcdyAcNihBKS0Vo",
+  authDomain: "stufy-zen.firebaseapp.com",
+  projectId: "stufy-zen",
+  storageBucket: "stufy-zen.firebasestorage.app",
+  messagingSenderId: "154370292148",
+  appId: "1:154370292148:web:704d2bee95dd935f805ae1",
 };
 
 export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);

@@ -34,6 +34,7 @@ const fadeUp = {
 
 type StatsDoc = {
   xp?: number;
+  coins?: number;
   streak?: number;
   lastStudiedDate?: string;
   todayMinutes?: number;
@@ -139,6 +140,7 @@ const Home = () => {
   const progressPercent = Math.max(0, Math.min(100, focusGoal > 0 ? (todayMins / focusGoal) * 100 : 0));
 
   const xp = Number(stats?.xp || 0);
+  const coins = Number(stats?.coins || 0);
   const { level, intoLevel, xpProgress } = levelFromXp(xp);
 
   const plannedTomorrow = useMemo(() => {
@@ -189,13 +191,18 @@ const Home = () => {
     ];
   }, [todayMins, plannedTomorrow]);
 
-  const claimMission = async (missionId: string, xpGain: number) => {
+  const claimMission = async (
+  missionId: string,
+  xpGain: number,
+  coinGain: number
+) => {
     if (!user) return;
     if (isClaimed(missionId)) return;
 
     await updateDoc(doc(db, "stats", user.uid), {
       [`missionClaims.${todayKey}.${missionId}`]: true,
       xp: increment(xpGain),
+      coins: increment(coinGain),
       updatedAt: serverTimestamp(),
     });
   };
@@ -254,6 +261,15 @@ const Home = () => {
               <p className="text-sm text-muted-foreground">Day Streak</p>
             </div>
           </div>
+
+          <div className="glass-card-hover p-6 rounded-2xl">
+  <p className="text-3xl font-bold text-yellow-400">
+    🪙 {coins}
+  </p>
+  <p className="text-sm text-muted-foreground">
+    Coins
+  </p>
+</div>
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -332,11 +348,17 @@ const Home = () => {
                       </p>
                     </div>
 
-                    <span className="text-xs font-mono text-primary">+{m.xp} XP</span>
-
+                    <div className="text-right">
+  <div className="text-xs font-mono text-primary">
+    +{m.xp} XP
+  </div>
+  <div className="text-xs font-mono text-yellow-400">
+    +{m.coins} 🪙
+  </div>
+</div>
                     {m.done && !claimed && (
                       <button
-                        onClick={() => claimMission(m.id, m.xp)}
+                        onClick={() => claimMission(m.id, m.xp, m.coins)}
                         className="text-xs px-3 py-1 rounded-full bg-success/10 text-success font-medium hover:bg-success/20 transition-colors"
                       >
                         Claim

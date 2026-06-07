@@ -74,6 +74,7 @@ export async function addStudyMinutes(uid: string, minutes: number) {
   const todayKey = ymd();
   const yesterdayKey = ymdOffset(-1);
   const xpGain = m * 3;
+  const coinGain = Math.max(1, Math.floor(m / 5));
 
   await ensureStats(uid);
 
@@ -104,6 +105,7 @@ export async function addStudyMinutes(uid: string, minutes: number) {
       {
         uid,
         xp: prevXp + xpGain,
+        coins: Number(data?.coins || 0) + coinGain,
         totalMinutes: prevTotal + m,
         weeklyMinutes: prevWeekly + m,
         todayMinutes: prevTodayMinutes + m,

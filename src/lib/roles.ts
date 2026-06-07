@@ -2,7 +2,7 @@ export type UserRole = "owner" | "member";
 
 export const OWNER_UIDS: string[] = [
   "a3lMaAkSnzPC7IyV3zgDQCttni12",
-  "oC9mPAeEhPUkPb29C1nRShuxjxl1",
+  "cTEj7okFu5MTZhkT7iioyDoPvZ22",
 ];
 
 export function isOwnerUid(uid?: string | null) {

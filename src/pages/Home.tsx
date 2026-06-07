@@ -166,6 +166,7 @@ const Home = () => {
         progress: Math.min(todayMins, 25),
         goal: 25,
         xp: 50,
+        coins: 10,
       },
       {
         id: "study60",
@@ -174,6 +175,7 @@ const Home = () => {
         progress: Math.min(todayMins, 60),
         goal: 60,
         xp: 100,
+        coins: 25,
       },
       {
         id: "planTomorrow",
@@ -182,6 +184,7 @@ const Home = () => {
         progress: plannedTomorrow ? 1 : 0,
         goal: 1,
         xp: 35,
+        coins: 5,
       },
     ];
   }, [todayMins, plannedTomorrow]);

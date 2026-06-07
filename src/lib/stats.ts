@@ -46,6 +46,7 @@ export async function ensureStats(uid: string) {
     await setDoc(ref, {
       uid,
       xp: 0,
+      coins: 0,
       totalMinutes: 0,
       weeklyMinutes: 0,
       todayMinutes: 0,
